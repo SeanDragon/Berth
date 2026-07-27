@@ -9,6 +9,9 @@ options:
 settings:
   base:
     SWIFT_EMIT_LOC_STRINGS: true
+    # 版本号唯一来源:两个 target 的 Info.plist 都引用这两个变量,别去改生成出来的 plist
+    MARKETING_VERSION: "1.1.0"
+    CURRENT_PROJECT_VERSION: "2"
 
 fileGroups:
   - project.yml
@@ -43,6 +46,8 @@ targets:
       path: Berth/Info.plist
       properties:
         CFBundleDisplayName: Berth
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHighResolutionCapable: true
         # macOS 15 起,连同网段的地址(192.168.x / 10.x / *.local)要过本地网络隐私门禁。
@@ -103,6 +108,8 @@ targets:
       path: BerthiOS/Info.plist
       properties:
         CFBundleDisplayName: Berth
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
