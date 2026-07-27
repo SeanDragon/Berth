@@ -49,6 +49,7 @@ struct SidebarView: View {
     var body: some View {
         VStack(spacing: 0) {
             header
+            configHintRow
             if allHosts.isEmpty {
                 emptyState
             } else {
@@ -234,6 +235,41 @@ struct SidebarView: View {
         .padding(.vertical, 3)
     }
 
+    /// config 里出现了没在导入面板见过的主机时,给一条可点的轻提示(而不是自己冒出来)
+    @ViewBuilder
+    private var configHintRow: some View {
+        let pending = SSHConfigImportPolicy.shared
+            .unseenAliases(among: SSHConfigService.shared.candidates.map(\.alias))
+        if !pending.isEmpty {
+            Button {
+                OnboardingController.shared.presentImportPanel()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "doc.badge.plus")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("ssh_config 新增 \(pending.count) 个主机")
+                        .font(.system(size: 11.5))
+                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(theme.accentSoft)
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 6)
+        }
+    }
+
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer()
@@ -250,6 +286,13 @@ struct SidebarView: View {
             }
             .controlSize(.regular)
             .buttonStyle(.borderedProminent)
+            if !SSHConfigService.shared.candidates.isEmpty {
+                Button("从 ~/.ssh/config 导入…") {
+                    OnboardingController.shared.presentImportPanel()
+                }
+                .buttonStyle(.link)
+                .font(.caption)
+            }
             Text("也可 ⌘K 粘贴 ssh 命令直连")
                 .font(.caption2)
                 .foregroundStyle(.tertiary)

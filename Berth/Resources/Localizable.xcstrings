@@ -5110,6 +5110,337 @@
           }
         }
       }
+    },
+    "欢迎使用 Berth": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcome to Berth"
+          }
+        }
+      }
+    },
+    "~/.ssh/config 主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hosts from ~/.ssh/config"
+          }
+        }
+      }
+    },
+    "~/.ssh/config 里暂时没有可导入的主机。你可以直接新建主机,或按 ⌘K 粘贴一条 ssh 命令连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There's nothing to import from ~/.ssh/config yet. Add a host directly, or press ⌘K and paste an ssh command."
+          }
+        }
+      }
+    },
+    "在 ~/.ssh/config 里找到 %lld 个主机。勾选想显示在侧栏的,其余以后可以在设置里再加。Berth 只读这个文件,不会改动它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Found %lld hosts in ~/.ssh/config. Tick the ones you want in the sidebar — you can add the rest later in Settings. Berth only reads this file, it never changes it."
+          }
+        }
+      }
+    },
+    "勾选要显示在侧栏的主机。Berth 只读 ~/.ssh/config,不会改动它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tick the hosts you want in the sidebar. Berth only reads ~/.ssh/config, it never changes it."
+          }
+        }
+      }
+    },
+    "已选 %lld/%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld of %lld selected"
+          }
+        }
+      }
+    },
+    "全选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select All"
+          }
+        }
+      }
+    },
+    "全不选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select None"
+          }
+        }
+      }
+    },
+    "筛选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter"
+          }
+        }
+      }
+    },
+    "经 ProxyJump %@ 连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connects through ProxyJump %@"
+          }
+        }
+      }
+    },
+    "%lld 处 Berth 读不懂,已跳过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld things Berth couldn't read, skipped"
+          }
+        }
+      }
+    },
+    "第 %lld 行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Line %lld"
+          }
+        }
+      }
+    },
+    "已自动跳过 %lld 条 Git 托管别名(github.com 等,没有可用的 shell)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipped %lld Git hosting aliases automatically (github.com and friends have no usable shell)."
+          }
+        }
+      }
+    },
+    "全选时,以后 config 里新增的主机也会自动出现在侧栏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With everything selected, hosts you add to the config later show up in the sidebar automatically."
+          }
+        }
+      }
+    },
+    "以后再说": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Now"
+          }
+        }
+      }
+    },
+    "开始使用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get Started"
+          }
+        }
+      }
+    },
+    "不显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show None"
+          }
+        }
+      }
+    },
+    "显示这 %lld 个": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show These %lld"
+          }
+        }
+      }
+    },
+    "读取失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't read the file: %@"
+          }
+        }
+      }
+    },
+    "Include %@ 未展开,其中的主机不会出现在列表里": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Include %@ isn't expanded, so hosts inside it won't appear in this list"
+          }
+        }
+      }
+    },
+    "Match %@ 块已跳过,其中的设置不会生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match %@ block skipped, the settings inside it won't apply"
+          }
+        }
+      }
+    },
+    "Host 后面没有别名,该块被忽略": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host has no alias, this block was ignored"
+          }
+        }
+      }
+    },
+    "Port %@ 不是有效端口,按 22 处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ isn't a valid port, using 22 instead"
+          }
+        }
+      }
+    },
+    "别名 %@ 重复定义,按先出现的一份处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias %@ is defined more than once, using the first one"
+          }
+        }
+      }
+    },
+    "ssh_config": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh_config"
+          }
+        }
+      },
+      "shouldTranslate": false
+    },
+    "显示全部 %lld 个主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing all %lld hosts"
+          }
+        }
+      }
+    },
+    "显示 %lld / %lld 个主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing %lld of %lld hosts"
+          }
+        }
+      }
+    },
+    "不显示 config 主机(共 %lld 个)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not showing config hosts (%lld available)"
+          }
+        }
+      }
+    },
+    "没有找到可导入的主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hosts found to import"
+          }
+        }
+      }
+    },
+    "管理…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage…"
+          }
+        }
+      }
+    },
+    "选择 ~/.ssh/config 里哪些主机显示在侧栏。Berth 只读这个文件,不会修改它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose which hosts from ~/.ssh/config appear in the sidebar. Berth only reads this file, it never modifies it."
+          }
+        }
+      }
+    },
+    "ssh_config 新增 %lld 个主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld new hosts in ssh_config"
+          }
+        }
+      }
+    },
+    "从 ~/.ssh/config 导入…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import from ~/.ssh/config…"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

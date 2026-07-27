@@ -164,6 +164,74 @@ final class SSHConfigParserTests: XCTestCase {
         XCTAssertFalse(SSHConfigParser.wildcardMatch("web12", pattern: "web?"))
         XCTAssertFalse(SSHConfigParser.wildcardMatch("api", pattern: "web*"))
     }
+
+    // MARK: - 诊断(首次导入引导集中展示,不再静默吞掉)
+
+    func testIncludeAndMatchAreReported() {
+        let config = """
+        Include ~/.orbstack/ssh/config
+
+        Host web
+            HostName web.example.com
+
+        Match host bastion
+            User admin
+        """
+        let result = SSHConfigParser.parseDetailed(config)
+        XCTAssertEqual(result.hosts.map(\.alias), ["web"])
+        XCTAssertTrue(result.issues.contains { $0.kind == .includeNotExpanded("~/.orbstack/ssh/config") })
+        XCTAssertTrue(result.issues.contains { $0.kind == .matchBlockSkipped("host bastion") })
+    }
+
+    func testInvalidPortReportedAndFallsBack() {
+        let result = SSHConfigParser.parseDetailed("Host web\n  Port 端口\n")
+        XCTAssertNil(result.hosts[0].port)
+        XCTAssertTrue(result.issues.contains { $0.kind == .invalidPort("端口") })
+
+        let outOfRange = SSHConfigParser.parseDetailed("Host web\n  Port 70000\n")
+        XCTAssertNil(outOfRange.hosts[0].port)
+        XCTAssertTrue(outOfRange.issues.contains { $0.kind == .invalidPort("70000") })
+    }
+
+    func testDuplicateAliasReportedOnce() {
+        let config = """
+        Host web
+            HostName first.example.com
+
+        Host web
+            HostName second.example.com
+        """
+        let result = SSHConfigParser.parseDetailed(config)
+        XCTAssertEqual(result.hosts.count, 1)
+        // ssh 语义:参数取先出现的
+        XCTAssertEqual(result.hosts[0].hostname, "first.example.com")
+        XCTAssertEqual(result.issues.filter { $0.kind == .duplicateAlias("web") }.count, 1)
+    }
+
+    /// Host 后面没别名时,块内的选项不能漏进全局 Host * 影响其它主机
+    func testHostWithoutAliasDoesNotLeakOptions() {
+        let config = """
+        Host
+            User leaked
+
+        Host web
+            HostName web.example.com
+        """
+        let result = SSHConfigParser.parseDetailed(config)
+        XCTAssertEqual(result.hosts.map(\.alias), ["web"])
+        XCTAssertNil(result.hosts[0].user)
+        XCTAssertTrue(result.issues.contains { $0.kind == .hostWithoutAlias })
+    }
+
+    func testCleanConfigHasNoIssues() {
+        let config = """
+        Host web
+            HostName web.example.com
+            User deploy
+            Port 2200
+        """
+        XCTAssertTrue(SSHConfigParser.parseDetailed(config).issues.isEmpty)
+    }
 }
 
 final class KeychainStoreTests: XCTestCase {

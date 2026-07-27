@@ -77,12 +77,15 @@ final class SessionManager {
 
     // MARK: - 打开 / 复制
 
+    /// `autoConnect: false` 只建标签不拨号,由 pane 首次显示时补连(启动恢复用,
+    /// 见 restoreSessions —— 一次性连一屏标签会让指纹确认弹窗和失败横幅一起涌上来)
     @discardableResult
     func open(
         spec: HostSpec,
         transientPassword: String? = nil,
         transientPassphrase: String? = nil,
-        reusing connection: SSHConnection? = nil
+        reusing connection: SSHConnection? = nil,
+        autoConnect: Bool = true
     ) -> TerminalSession {
         let session = TerminalSession(spec: spec)
         session.transientPassword = transientPassword
@@ -96,7 +99,7 @@ final class SessionManager {
         let tab = PaneTab(sessionID: session.id)
         tabs.append(tab)
         selectedTabID = tab.id
-        session.connect()
+        if autoConnect { session.connect() }
         persistOpenTabs()
         return session
     }
@@ -370,11 +373,16 @@ final class SessionManager {
         let stored = (try? context.fetch(FetchDescriptor<Host>())) ?? []
         let hosts = stored + SSHConfigService.shared.mirrorHosts
         guard !hosts.isEmpty else { return }
+        // 只有第一个标签自动拨号,其余等切过去再连:一次性把上次的标签全连起来,
+        // 会让 known_hosts 指纹确认弹窗排队(后台标签的弹窗还压根显示不出来,
+        // 会话就卡在「等待主机密钥确认」),连不上的主机也会一次涌出一片错误横幅。
+        var isFirst = true
         for idString in ids {
             guard let uuid = UUID(uuidString: idString),
                   let host = hosts.first(where: { $0.id == uuid }) else { continue }
-            open(spec: HostSpec.resolve(host, in: hosts))
-            try? await Task.sleep(for: .milliseconds(400))
+            open(spec: HostSpec.resolve(host, in: hosts), autoConnect: isFirst)
+            isFirst = false
         }
+        selectedTabID = tabs.first?.id
     }
 }

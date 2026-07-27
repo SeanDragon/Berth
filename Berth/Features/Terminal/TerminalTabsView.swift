@@ -464,6 +464,10 @@ struct TerminalPaneView: View {
             }
             }
         }
+        .task {
+            // 启动恢复出来的标签是 idle 的(见 restoreSessions),切到哪个才连哪个
+            if case .idle = session.state { session.connect() }
+        }
         .onChange(of: sessionManager.searchRequestToken) { _, _ in
             // 只有当前选中会话响应 ⌘F
             guard session.id == sessionManager.selectedID else { return }

@@ -7,7 +7,7 @@ struct BerthiOSApp: App {
     @State private var theme = ThemeStore.shared
 
     init() {
-        KeychainStore.migrateToSharedGroupIfNeeded()
+        // 旧位置的机密按需迁移(KeychainStore.adoptLegacyItem),启动时不扫钥匙串
         _ = CloudSyncMonitor.shared
     }
 

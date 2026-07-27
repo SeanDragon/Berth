@@ -27,7 +27,25 @@ struct SettingsView: View {
     @State private var syncNote: String?
     @State private var showAcknowledgements = false
     @State private var languageChanged = false
+    @State private var isShowingConfigImport = false
+    @State private var configService = SSHConfigService.shared
+    @State private var importPolicy = SSHConfigImportPolicy.shared
     @Environment(\.modelContext) private var modelContext
+
+    /// 设置页里一句话交代当前 config 主机的显示范围
+    private var configImportSummary: String {
+        let total = configService.candidates.count
+        guard total > 0 else { return String(localized: "没有找到可导入的主机") }
+        switch importPolicy.mode {
+        case .all:
+            return String(localized: "显示全部 \(total) 个主机")
+        case .selected:
+            let shown = configService.candidates.filter { importPolicy.includes(alias: $0.alias) }.count
+            return String(localized: "显示 \(shown) / \(total) 个主机")
+        case .none:
+            return String(localized: "不显示 config 主机(共 \(total) 个)")
+        }
+    }
 
     var body: some View {
         Form {
@@ -91,6 +109,17 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+            }
+            Section("ssh_config") {
+                HStack {
+                    Text(configImportSummary)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("管理…") { isShowingConfigImport = true }
+                }
+                Text("选择 ~/.ssh/config 里哪些主机显示在侧栏。Berth 只读这个文件,不会修改它。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("通用") {
                 Toggle("在菜单栏显示图标(会话切换 / 快速连接)", isOn: $menuBarExtraEnabled)
@@ -164,6 +193,9 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .sheet(isPresented: $showAcknowledgements) {
             AcknowledgementsView()
+        }
+        .sheet(isPresented: $isShowingConfigImport) {
+            SSHConfigImportSheet(isWelcome: false)
         }
         // 跟随主题:系统表单底色会被壁纸渗色(desktop tinting),与主窗口主题不搭
         .scrollContentBackground(.hidden)

@@ -12,8 +12,14 @@ import SwiftData
 final class SSHConfigService {
     static let shared = SSHConfigService()
 
-    /// config 的内存镜像,按 config 文件内出现顺序排列
+    /// config 的内存镜像,按 config 文件内出现顺序排列。已按导入策略过滤
     private(set) var mirrorHosts: [Host] = []
+    /// config 里解析出的全部候选主机(未按策略过滤),供导入面板勾选
+    private(set) var candidates: [SSHConfigHost] = []
+    /// 解析时读不懂的地方(Include / Match / 坏行),导入面板集中展示
+    private(set) var issues: [SSHConfigIssue] = []
+    /// 因是 Git 托管别名(github.com 等)而自动跳过的条数
+    private(set) var skippedGitHostingCount = 0
 
     @ObservationIgnored private var watcher: DispatchSourceFileSystemObject?
     @ObservationIgnored private var debounceTask: Task<Void, Never>?
@@ -28,6 +34,9 @@ final class SSHConfigService {
         if ProcessInfo.processInfo.environment["BERTH_TRANSIENT_STORE"] == "1" { return }
         started = true
         purgeLegacyMirrorRows(container: container)
+        // 库里已有托管主机 = 这台机器早就在用 Berth,按老行为落定,别拿引导页拦人
+        let hostCount = (try? ModelContext(container).fetchCount(FetchDescriptor<Host>())) ?? 0
+        SSHConfigImportPolicy.shared.bootstrap(existingHostCount: hostCount)
         sync()
         startWatching()
     }
@@ -117,8 +126,18 @@ final class SSHConfigService {
     ]
 
     func sync() {
-        let parsed = SSHConfigParser.parseFile(at: configPath)
-            .filter { !Self.gitHostingDomains.contains($0.hostname.lowercased()) }
+        let result = SSHConfigParser.parseFileDetailed(at: configPath)
+        let usable = result.hosts.filter { !Self.gitHostingDomains.contains($0.hostname.lowercased()) }
+        skippedGitHostingCount = result.hosts.count - usable.count
+        candidates = usable
+        issues = result.issues
+        rebuildMirrors()
+    }
+
+    /// 按当前导入策略重建侧栏可见的镜像(策略变更后由 SSHConfigImportPolicy 调用)
+    func rebuildMirrors() {
+        let policy = SSHConfigImportPolicy.shared
+        let parsed = candidates.filter { policy.includes(alias: $0.alias) }
 
         // 复用旧实例保持 lastConnectedAt/osName 等运行期状态;config 已删的自然淘汰
         var previous = Dictionary(mirrorHosts.map { ($0.label, $0) }, uniquingKeysWith: { first, _ in first })

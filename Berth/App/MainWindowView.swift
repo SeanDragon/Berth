@@ -8,11 +8,13 @@ struct MainWindowView: View {
     @State private var commandPalette = CommandPaletteController.shared
     @State private var snippetRun = SnippetRunController.shared
     @State private var theme = ThemeStore.shared
+    @State private var onboarding = OnboardingController.shared
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         @Bindable var quickConnect = quickConnect
         @Bindable var snippetRun = snippetRun
+        @Bindable var onboarding = onboarding
         ZStack {
             NavigationSplitView {
                 SidebarView()
@@ -58,12 +60,16 @@ struct MainWindowView: View {
         .sheet(item: $snippetRun.pending) { snippet in
             SnippetRunSheet(snippet: snippet)
         }
+        .sheet(isPresented: $onboarding.isImportPresented) {
+            SSHConfigImportSheet(isWelcome: onboarding.isWelcome)
+        }
         .frame(minWidth: 760, minHeight: 520)
         .task {
             Persistence.dedupManualHosts(container: modelContext.container)
             SSHConfigService.shared.start(container: modelContext.container)
             TriggerEngine.shared.start(container: modelContext.container)
             theme.applyWindowChrome()
+            onboarding.startIfNeeded()
         }
     }
 }

@@ -78,7 +78,7 @@ enum KeychainStore {
             guard let data = result as? Data else { return nil }
             return String(data: data, encoding: .utf8)
         case errSecItemNotFound:
-            return nil
+            return adoptLegacyItem(account: account)
         default:
             throw KeychainError.unexpectedStatus(status)
         }
@@ -91,75 +91,46 @@ enum KeychainStore {
         }
     }
 
-    /// 一次性迁移:把旧位置(新旧 service 名 × 文件/数据保护钥匙串)里的机密,
-    /// 搬进共享组的数据保护钥匙串并可同步。之后同一 Apple ID 的两端可直连。
-    /// 出错(钥匙串被锁等)时不打完成标记,下次启动重试。
-    static func migrateToSharedGroupIfNeeded() {
-        let flag = "migration.keychainSharedGroup.v2"
-        guard !UserDefaults.standard.bool(forKey: flag) else { return }
+    // MARK: 旧位置的机密:按需迁移
 
-        var collected: [String: String] = [:]
+    /// 共享组里没有这一条 → 到旧位置找,找到就顺手搬进来。
+    ///
+    /// 早先是启动时全量扫描搬迁。问题是旧项的 ACL 绑在老签名上,每读一条系统就弹一次
+    /// 钥匙串授权 —— 几十条凭据就是几十个弹窗糊在启动画面上,且用户根本不知道在干嘛。
+    /// 改成按需之后,只有真的要用某个主机的凭据时才可能弹一次,而且上下文清楚
+    /// (正在连这台机器)。选「始终允许」后不再出现。
+    private static func adoptLegacyItem(account: String) -> String? {
+        guard let secret = readLegacyItem(account: account) else { return nil }
+        try? save(secret, account: account)
+        return secret
+    }
 
-        /// 单条取密文(旧项 ACL 绑在老签名上,首次读可能触发钥匙串授权弹窗,选"始终允许"即可)
-        func readLegacy(account: String, service svc: String, dataProtection: Bool) -> String? {
-            var q: [String: Any] = [
+    /// 旧位置 = 同 service 名下的「非共享组 / 老式文件钥匙串」项
+    private static func readLegacyItem(account: String) -> String? {
+        #if os(macOS)
+        let dataProtectionVariants = [false, true]
+        #else
+        let dataProtectionVariants = [true]
+        #endif
+
+        for dataProtection in dataProtectionVariants {
+            var query: [String: Any] = [
                 kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: svc,
+                kSecAttrService as String: service,
                 kSecAttrAccount as String: account,
                 kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
                 kSecReturnData as String: true,
                 kSecMatchLimit as String: kSecMatchLimitOne,
             ]
-            q[kSecUseDataProtectionKeychain as String] = dataProtection
-            var result: CFTypeRef?
-            guard SecItemCopyMatching(q as CFDictionary, &result) == errSecSuccess,
-                  let data = result as? Data else { return nil }
-            return String(data: data, encoding: .utf8)
-        }
-
-        /// 两段式:文件钥匙串不支持 MatchLimitAll+返回 data,先取账户名再逐条读密文
-        func harvest(service svc: String, dataProtection: Bool) -> Bool {
-            var query: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: svc,
-                kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
-                kSecReturnAttributes as String: true,
-                kSecMatchLimit as String: kSecMatchLimitAll,
-            ]
             query[kSecUseDataProtectionKeychain as String] = dataProtection
             var result: CFTypeRef?
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            guard status == errSecSuccess, let items = result as? [[String: Any]] else {
-                return status == errSecItemNotFound
-            }
-            for item in items {
-                // 只搬 Berth 约定账户:host.<uuid>.* 密码 / key.<uuid>.* 私钥口令
-                guard let account = item[kSecAttrAccount as String] as? String,
-                      account.hasPrefix("host.") || account.hasPrefix("key."),
-                      collected[account] == nil,
-                      let secret = readLegacy(account: account, service: svc, dataProtection: dataProtection)
-                else { continue }
-                collected[account] = secret
-            }
-            return true
+            guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+                  let data = result as? Data,
+                  let secret = String(data: data, encoding: .utf8)
+            else { continue }
+            return secret
         }
-
-        var ok = true
-        for svc in [service] {
-            #if os(macOS)
-            ok = harvest(service: svc, dataProtection: false) && ok
-            ok = harvest(service: svc, dataProtection: true) && ok
-            #else
-            ok = harvest(service: svc, dataProtection: true) && ok
-            #endif
-        }
-
-        for (account, secret) in collected {
-            try? save(secret, account: account)
-        }
-        if ok {
-            UserDefaults.standard.set(true, forKey: flag)
-        }
+        return nil
     }
 
     /// 删除主机相关的全部凭据(删除主机时调用)
