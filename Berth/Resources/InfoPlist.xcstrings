@@ -1,0 +1,18 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "NSLocalNetworkUsageDescription" : {
+      "comment" : "macOS 15+ 本地网络授权弹窗里显示的用途说明",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berth needs local network access to reach SSH hosts on your LAN."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

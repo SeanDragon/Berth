@@ -82,7 +82,7 @@ docker rm -f berth-test-sshd   # tear down
 - **SwiftUI** with an AppKit-bridged terminal view; **SwiftData** for persistence
 - **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** for terminal emulation, with the Metal GPU rendering backend
 - **[Citadel](https://github.com/orlandos-nl/Citadel)** for SSH, vendored in `vendor/` with patches — notably `rsa-sha2-512` signatures (RFC 8332) so RSA keys work against OpenSSH 8.8+; see `vendor/PATCHES.md`
-- **XcodeGen** project generation; distribution as a notarized DMG (no App Store sandbox, so `~/.ssh` stays readable)
+- **XcodeGen** project generation; distribution as a notarized DMG
 
 ---
 

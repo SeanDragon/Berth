@@ -7,6 +7,7 @@ import NIOCore
 import NIOSSH
 import Observation
 import SwiftTerm
+import os
 
 /// 单个 SSH 终端会话:状态机 idle → connecting → connected → disconnected(reason)。
 /// UI 只订阅 `state`,不直接操作连接。TerminalView 由会话持有,
@@ -176,7 +177,20 @@ final class TerminalSession: Identifiable {
             var disconnectReason: DisconnectReason
             var shellExited = false
             do {
-                try await runSession()
+                do {
+                    try await runSession()
+                } catch {
+                    let blocked = LocalNetworkAccess.isLikelyBlocked(error, host: spec.hostname)
+                    DebugLog.append("session failed host=\(spec.hostname):\(spec.port) userInitiated=\(userInitiatedDisconnect) localNetBlocked=\(blocked) raw=\(String(describing: error))")
+                    // 局域网地址撞上 EHOSTUNREACH:多半是被 macOS 本地网络门禁挡了,
+                    // 而 NIO 的 BSD socket 不会触发授权请求。这时候才去要授权,
+                    // 拿到就重跑一次(TCP 都没建起来,重跑是干净的)
+                    guard !userInitiatedDisconnect,
+                          LocalNetworkAccess.isLikelyBlocked(error, host: spec.hostname),
+                          await LocalNetworkAccess.requestAccess(host: spec.hostname, port: spec.port)
+                    else { throw error }
+                    try await runSession()
+                }
                 // 干净返回(收到 exit-status 0 / 干净 EOF)= shell 正常退出
                 shellExited = !userInitiatedDisconnect
                 disconnectReason = userInitiatedDisconnect ? .userInitiated : .remoteClosed
