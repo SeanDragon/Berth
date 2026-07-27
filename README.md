@@ -82,7 +82,7 @@ docker rm -f berth-test-sshd   # 停止
 - **SwiftUI**(AppKit 桥接终端视图)+ **SwiftData** 持久化
 - **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** 终端模拟,启用 Metal GPU 渲染后端
 - **[Citadel](https://github.com/orlandos-nl/Citadel)** SSH 库,vendor 在 `vendor/` 并打补丁——核心是 `rsa-sha2-512` 签名(RFC 8332),让 RSA 密钥能连 OpenSSH 8.8+;详见 `vendor/PATCHES.md`
-- **XcodeGen** 生成工程;以公证 DMG 分发(不走 App Store 沙盒,保住 `~/.ssh` 读取)
+- **XcodeGen** 生成工程;以公证 DMG 分发
 
 ---
 
