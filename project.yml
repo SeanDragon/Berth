@@ -45,6 +45,10 @@ targets:
         CFBundleDisplayName: Berth
         LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
         NSHighResolutionCapable: true
+        # macOS 15 起,连同网段的地址(192.168.x / 10.x / *.local)要过本地网络隐私门禁。
+        # 缺这条说明系统不会给出像样的授权弹窗,连 LAN 主机直接 EHOSTUNREACH。
+        # 译文在 Berth/Resources/InfoPlist.xcstrings
+        NSLocalNetworkUsageDescription: Berth 需要访问本地网络,才能连接同一局域网内的 SSH 主机。
     entitlements:
       path: Berth/Berth.entitlements
       properties:

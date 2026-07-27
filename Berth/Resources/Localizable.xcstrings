@@ -5441,6 +5441,46 @@
           }
         }
       }
+    },
+    "这是局域网地址,多半是 macOS 拦下了本地网络访问 —— 打开「系统设置 › 隐私与安全性 › 本地网络」,把 Berth 的开关打开再试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's a local network address, so macOS has most likely blocked the connection — open System Settings › Privacy & Security › Local Network and turn Berth on, then try again."
+          }
+        }
+      }
+    },
+    "连不上 %@:%@:没有到主机的路由。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach %@:%@ — no route to host. "
+          }
+        }
+      }
+    },
+    "连不上 %@:%@:没有到主机的路由,检查地址、网段和网络连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach %@:%@ — no route to host. Check the address, the subnet, and your network connection."
+          }
+        }
+      }
+    },
+    "最近尝试 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last attempt %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
