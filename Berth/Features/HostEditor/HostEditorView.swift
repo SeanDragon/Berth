@@ -125,7 +125,7 @@ struct HostEditorView: View {
 
                     Picker("代理", selection: $proxyKind) {
                         ForEach(ProxyKind.allCases) { kind in
-                            Text(kind.label).tag(kind)
+                            Text(LocalizedStringKey(kind.label)).tag(kind)
                         }
                     }
                     if proxyKind != .none {
