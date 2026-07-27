@@ -6,9 +6,12 @@ enum ProxyKind: String, Codable, CaseIterable, Identifiable {
     case socks5
     var id: String { rawValue }
 
+    /// 已本地化的显示名 —— 必须在这里取,调用点拿到的是成品字符串。
+    /// 裸字面量在 `Text(kind.label)` 里不会走本地化(SwiftUI 只对字面量自动提取),
+    /// 英文界面会漏出中文(issue #1)。同 PortForwardKind.label。
     var label: String {
         switch self {
-        case .none: return "不使用"
+        case .none: return String(localized: "不使用")
         case .http: return "HTTP CONNECT"
         case .socks5: return "SOCKS5"
         }
