@@ -240,7 +240,7 @@ struct TerminalTabsView: View {
             Image(systemName: "terminal")
                 .font(.system(size: 36))
                 .foregroundStyle(.tertiary)
-            Text("双击左侧主机开始连接")
+            Text("点击左侧主机开始连接")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

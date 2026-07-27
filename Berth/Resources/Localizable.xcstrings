@@ -1541,16 +1541,6 @@
         }
       }
     },
-    "双击左侧主机开始连接": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Double-click a host on the left to connect"
-          }
-        }
-      }
-    },
     "发送": {
       "localizations": {
         "en": {
@@ -5438,6 +5428,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Import from ~/.ssh/config…"
+          }
+        }
+      }
+    },
+    "点击左侧主机开始连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click a host on the left to connect"
           }
         }
       }

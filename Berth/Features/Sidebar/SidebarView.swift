@@ -165,8 +165,7 @@ struct SidebarView: View {
                             isSelected: selectedHostID == host.id,
                             theme: theme
                         )
-                        .onTapGesture(count: 2) { connect(host) }
-                        .onTapGesture { selectedHostID = host.id }
+                        .onTapGesture { activate(host) }
                         .contextMenu { hostMenu(host) }
                     }
                 }
@@ -303,6 +302,18 @@ struct SidebarView: View {
 
     // MARK: - 行为
 
+    /// 单击行 = 切到这台主机:已经开着就切过去,没开才拨号。
+    /// (否则单击连接会让在侧栏上下点几下就攒出一堆同主机标签)
+    private func activate(_ host: Host) {
+        selectedHostID = host.id
+        if let existing = sessionManager.sessions.first(where: { $0.spec.hostID == host.id }) {
+            sessionManager.focusPane(existing.id)
+            return
+        }
+        connect(host)
+    }
+
+    /// 明确要「再开一个」:右键菜单、⌘K 等
     private func connect(_ host: Host) {
         selectedHostID = host.id
         host.lastConnectedAt = Date()
@@ -331,9 +342,9 @@ struct SidebarView: View {
     private func connectSelectionOrFirst() {
         let rows = visibleHosts
         if let selected = selectedHostID, let host = rows.first(where: { $0.id == selected }) {
-            connect(host)
+            activate(host)
         } else if !searchText.isEmpty, let first = rows.first {
-            connect(first)
+            activate(first)
         }
     }
 
