@@ -1,0 +1,10 @@
+project: Berth.xcodeproj
+scheme: BerthiOS
+bundle_id: com.berthssh.ios
+info_plist: BerthiOS/Info.plist
+pre_build:
+  - xcodegen generate
+testflight:
+  groups: []
+  locale: zh-Hans
+  submit_beta_review: false
