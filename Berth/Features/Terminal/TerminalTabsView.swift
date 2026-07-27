@@ -433,6 +433,28 @@ struct TerminalPaneView: View {
     @State private var isSearchActive = false
     @State private var editingHost: Host?
     @State private var confirmingDelete = false
+    /// 最近一次断线原因;非 nil 即挂着断线卡片。连上才清空,重连失败只换文案不重挂
+    @State private var lastDisconnect: TerminalSession.DisconnectReason?
+    /// 最近一次尝试结束的时间 —— 重连失败时错误文案一字不变,没有它用户看不出点动过
+    @State private var lastAttemptAt: Date?
+    /// 保证转圈至少可见一会儿:EHOSTUNREACH 是瞬时失败,不兜底的话按钮闪都不闪
+    @State private var isRetryingVisibly = false
+
+    private var isConnecting: Bool {
+        if case .connecting = session.state { return true }
+        return false
+    }
+
+    private var showsRetrySpinner: Bool { isConnecting || isRetryingVisibly }
+
+    private func retry() {
+        isRetryingVisibly = true
+        session.connect()
+        Task {
+            try? await Task.sleep(for: .milliseconds(700))
+            isRetryingVisibly = false // 还没连完的话由 isConnecting 接着转
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -449,7 +471,8 @@ struct TerminalPaneView: View {
                 disconnectCard
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 10)
-                    .animation(.spring(response: 0.38, dampingFraction: 0.82), value: session.state)
+                    // 只在卡片进出时动;重连失败不该重放一遍入场动画
+                    .animation(.spring(response: 0.38, dampingFraction: 0.82), value: lastDisconnect == nil)
 
             if isSearchActive {
                 HStack {
@@ -467,6 +490,17 @@ struct TerminalPaneView: View {
         .task {
             // 启动恢复出来的标签是 idle 的(见 restoreSessions),切到哪个才连哪个
             if case .idle = session.state { session.connect() }
+        }
+        .onChange(of: session.state) { _, state in
+            switch state {
+            case .disconnected(let reason):
+                lastDisconnect = reason
+                lastAttemptAt = Date()
+            case .connected:
+                lastDisconnect = nil
+                lastAttemptAt = nil
+            case .connecting, .idle: break // 重连中:卡片留着,按钮转圈
+            }
         }
         .onChange(of: sessionManager.searchRequestToken) { _, _ in
             // 只有当前选中会话响应 ⌘F
@@ -582,10 +616,12 @@ struct TerminalPaneView: View {
         }
     }
 
-    /// 断线呈现:紧凑居中卡片(原生 alert 布局)—— 图标内联标题,文案左对齐,按钮右对齐
+    /// 断线呈现:紧凑居中卡片(原生 alert 布局)—— 图标内联标题,文案左对齐,按钮右对齐。
+    /// 挂载条件是 `lastDisconnect` 而不是当前 state:重连期间卡片留在原地换成进度条,
+    /// 否则一失败就是「卡片滑走 → 再从上面滑回来」,点几次重连眼睛要花。
     @ViewBuilder
     private var disconnectCard: some View {
-        if case .disconnected(let reason) = session.state {
+        if let reason = lastDisconnect {
             let accent: Color = reason == .userInitiated ? .secondary : .red
             let theme = ThemeStore.shared.current
             VStack(alignment: .leading, spacing: 12) {
@@ -602,12 +638,19 @@ struct TerminalPaneView: View {
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                // 重连期间不换文案:进度只体现在按钮上,卡片高度纹丝不动。
+                // 换成进度行会让按钮整排上跳再弹回,点几次就是一片残影
                 Text(reason.message ?? String(localized: "连接已断开"))
                     .font(.system(size: 13.5))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let lastAttemptAt {
+                    Text("最近尝试 \(lastAttemptAt.formatted(date: .omitted, time: .standard))")
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.tertiary)
+                }
                 if session.isAutoReconnectScheduled {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.mini)
@@ -629,6 +672,7 @@ struct TerminalPaneView: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(.red)
+                    .disabled(showsRetrySpinner)
                     Button {
                         editHost()
                     } label: {
@@ -637,14 +681,24 @@ struct TerminalPaneView: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.bordered)
-                    Button {
-                        session.connect()
-                    } label: {
-                        Text("立即重连")
-                            .font(.system(size: 13.5))
-                            .frame(maxWidth: .infinity)
+                    .disabled(showsRetrySpinner)
+                    Button(action: retry) {
+                        // 转圈期间按钮本身不置灰 —— 置灰的 ProgressView 看着像卡死。
+                        // 靠 allowsHitTesting 挡住重复点击
+                        ZStack {
+                            Text("立即重连")
+                                .opacity(showsRetrySpinner ? 0 : 1)
+                            if showsRetrySpinner {
+                                ProgressView()
+                                    .controlSize(.small)
+                                    .tint(.white)
+                            }
+                        }
+                        .font(.system(size: 13.5))
+                        .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .allowsHitTesting(!showsRetrySpinner)
                 }
                 .buttonBorderShape(.capsule)
                 .controlSize(.regular)
