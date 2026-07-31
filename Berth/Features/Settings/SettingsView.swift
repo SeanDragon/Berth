@@ -20,6 +20,16 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.appLanguage) private var appLanguage = "system"
     @AppStorage(SettingsKeys.menuBarExtra) private var menuBarExtraEnabled = true
     @AppStorage(SettingsKeys.probeReachability) private var probeReachability = false
+    @AppStorage(SettingsKeys.aiModel) private var aiModel = ""
+    @AppStorage(SettingsKeys.aiBaseURL) private var aiBaseURL = ""
+    @AppStorage(SettingsKeys.aiAutoRunCommands) private var aiAutoRun = false
+    @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
+    @State private var aiProviderID = AIProvider.all[0].id
+    @State private var aiModelIsCustom = false
+    @State private var tab: SettingsTab = .terminal
+    @State private var aiKeyDraft = ""
+    @State private var aiKeySaved = ""
+    @State private var aiKeyNote: String?
     @State private var themeStore = ThemeStore.shared
     @State private var dataMessage: String?
     @State private var syncAccountStatus: CKAccountStatus?
@@ -48,8 +58,56 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        Form {
-            Section("终端") {
+        // 不用 NavigationSplitView:设置窗不需要导航语义,自绘两栏才能完全跟随终端主题
+        // (系统侧栏的选中态是固定蓝,和 20 套主题里的强调色对不上)
+        HStack(spacing: 0) {
+            sidebar
+            Divider().overlay(theme.borderColor)
+            Form {
+                switch tab {
+                case .terminal: terminalPage
+                case .session: sessionPage
+                case .ai: aiPage
+                case .security: securityPage
+                case .data: dataPage
+                case .general: generalPage
+                }
+            }
+            .formStyle(.grouped)
+            // 跟随主题:系统表单底色会被壁纸渗色(desktop tinting),与主窗口主题不搭
+            .scrollContentBackground(.hidden)
+            .background(theme.chromeBackground)
+        }
+        .frame(width: 840, height: 600)
+        .sheet(isPresented: $showAcknowledgements) {
+            AcknowledgementsView()
+        }
+        .sheet(isPresented: $isShowingConfigImport) {
+            SSHConfigImportSheet(isWelcome: false)
+        }
+        .tint(theme.accentColor)
+        .navigationTitle("设置")
+    }
+
+    private var theme: TerminalTheme { themeStore.current }
+
+    /// 左栏:大图标 + 文字,选中态走主题强调色
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(SettingsTab.allCases) { item in
+                SettingsTabRow(item: item, isSelected: tab == item) { tab = item }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .frame(width: 208)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(theme.panelBackground)
+    }
+
+    @ViewBuilder
+    private var terminalPage: some View {
+            Section {
                 Picker("主题", selection: Binding(
                     get: { themeStore.current.id },
                     set: { themeStore.select(id: $0) }
@@ -83,6 +141,10 @@ struct SettingsView: View {
             }
             .onChange(of: cursorShape) { _, _ in CursorPrefs.applyToAllSessions() }
             .onChange(of: cursorBlink) { _, _ in CursorPrefs.applyToAllSessions() }
+    }
+
+    @ViewBuilder
+    private var sessionPage: some View {
             Section("标签页") {
                 Toggle("关闭有活跃连接的标签页前需要确认", isOn: $confirmBeforeClosingTab)
             }
@@ -92,43 +154,92 @@ struct SettingsView: View {
                 Toggle("重连后自动 cd 回上次工作目录(需命令集成)", isOn: $restoreWorkingDir)
                 Toggle("后台时长任务完成/响铃通知", isOn: $notifyLongCommand)
             }
-            Section("安全") {
-                Toggle("使用私钥连接前要求 Touch ID / 密码验证", isOn: $requireTouchID)
-                Toggle("粘贴保护:多行或危险命令先确认", isOn: $pasteProtection)
-            }
-            Section("数据") {
-                HStack {
-                    Button("导出备份…") { exportBackup() }
-                    Button("导入备份…") { importBackup() }
+    }
+
+    @ViewBuilder
+    private var aiPage: some View {
+            Section {
+                Picker("供应商", selection: $aiProviderID) {
+                    Section("官方 / 云厂商") {
+                        ForEach(AIProvider.vendors) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    Section("聚合与中转") {
+                        ForEach(AIProvider.aggregators) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    Section("本地") {
+                        ForEach(AIProvider.local) { provider in
+                            Text(provider.name).tag(provider.id)
+                        }
+                    }
+                    Divider()
+                    Text("自定义").tag(AIProvider.customID)
                 }
-                Text("备份为 JSON,只含主机/分组/转发/代理结构;密码、passphrase、私钥在 Keychain,不会导出。")
+                .onChange(of: aiProviderID) { _, id in applyProvider(id) }
+                HStack {
+                    SecureField("API Key", text: $aiKeyDraft, prompt: Text(verbatim: "sk-…"))
+                        .onSubmit { saveAIKey() }
+                    Button("保存") { saveAIKey() }
+                        .disabled(aiKeyDraft == aiKeySaved)
+                }
+                if let provider = AIProvider.find(aiProviderID), !provider.models.isEmpty {
+                    Picker("模型", selection: modelSelection) {
+                        ForEach(provider.models, id: \.self) { model in
+                            Text(verbatim: model).tag(model)
+                        }
+                        Divider()
+                        Text("自定义…").tag(AIProvider.customModelTag)
+                    }
+                    if aiModelIsCustom {
+                        TextField("模型名", text: $aiModel, prompt: Text(verbatim: AISettings.defaultModel))
+                    }
+                } else {
+                    TextField("模型", text: $aiModel, prompt: Text(verbatim: AISettings.defaultModel))
+                }
+                TextField("API 地址", text: $aiBaseURL, prompt: Text(verbatim: AISettings.defaultBaseURL))
+                Picker("接口格式", selection: $aiFormat) {
+                    ForEach(AISettings.APIFormat.allCases) { format in
+                        Text(format.label).tag(format.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+                Toggle("自动执行 AI 建议的命令", isOn: $aiAutoRun)
+                Text("模型需支持工具调用(function calling),否则 AI 无法在服务器上执行命令。Key 只存钥匙串(随 iCloud 钥匙串同步),本地模型(Ollama / LM Studio)可留空。地址末尾已是版本号(如 /v1、/api/paas/v4)就按原样用,否则自动补 /v1。中转网关若提示不允许 /v1/messages,把接口格式切到「OpenAI 兼容」。开启自动执行后,危险命令与生产警戒主机仍会要求确认。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                if let dataMessage {
-                    Text(dataMessage)
+                if let provider = AIProvider.find(aiProviderID), let url = URL(string: provider.docsURL) {
+                    Link("\(provider.name) 文档与模型列表", destination: url)
+                        .font(.caption)
+                }
+                if let aiKeyNote {
+                    Text(aiKeyNote)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-            Section("ssh_config") {
-                HStack {
-                    Text(configImportSummary)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button("管理…") { isShowingConfigImport = true }
-                }
-                Text("选择 ~/.ssh/config 里哪些主机显示在侧栏。Berth 只读这个文件,不会修改它。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            .task {
+                aiKeySaved = (try? KeychainStore.read(account: AISettings.apiKeyAccount)) ?? ""
+                aiKeyDraft = aiKeySaved
+                aiProviderID = AIProvider.matching(baseURL: aiBaseURL)?.id ?? AIProvider.customID
+                // 已存的模型不在该供应商的常见列表里 → 停在「自定义…」,别把用户填的值顶掉
+                let known = AIProvider.find(aiProviderID)?.models ?? []
+                aiModelIsCustom = !known.isEmpty && !known.contains(aiModel)
             }
-            Section("通用") {
-                Toggle("在菜单栏显示图标(会话切换 / 快速连接)", isOn: $menuBarExtraEnabled)
-                Toggle("探测主机是否在线(侧栏状态条着色)", isOn: $probeReachability)
-                    .onChange(of: probeReachability) { _, _ in HostReachability.shared.settingsChanged() }
-                Text("每 30 秒对直连主机做一次 TCP 测活;跳板机/代理主机不探测。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var securityPage: some View {
+            Section {
+                Toggle("使用私钥连接前要求 Touch ID / 密码验证", isOn: $requireTouchID)
+                Toggle("粘贴保护:多行或危险命令先确认", isOn: $pasteProtection)
             }
+    }
+
+    @ViewBuilder
+    private var dataPage: some View {
             Section("iCloud 同步") {
                 HStack {
                     Text("状态")
@@ -156,6 +267,43 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             .task { await refreshSyncStatus() }
+            Section("数据") {
+                HStack {
+                    Button("导出备份…") { exportBackup() }
+                    Button("导入备份…") { importBackup() }
+                }
+                Text("备份为 JSON,只含主机/分组/转发/代理结构;密码、passphrase、私钥在 Keychain,不会导出。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let dataMessage {
+                    Text(dataMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Section("ssh_config") {
+                HStack {
+                    Text(configImportSummary)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("管理…") { isShowingConfigImport = true }
+                }
+                Text("选择 ~/.ssh/config 里哪些主机显示在侧栏。Berth 只读这个文件,不会修改它。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+    }
+
+    @ViewBuilder
+    private var generalPage: some View {
+            Section("通用") {
+                Toggle("在菜单栏显示图标(会话切换 / 快速连接)", isOn: $menuBarExtraEnabled)
+                Toggle("探测主机是否在线(侧栏状态条着色)", isOn: $probeReachability)
+                    .onChange(of: probeReachability) { _, _ in HostReachability.shared.settingsChanged() }
+                Text("每 30 秒对直连主机做一次 TCP 测活;跳板机/代理主机不探测。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("语言") {
                 Picker("界面语言", selection: $appLanguage) {
                     Text("跟随系统").tag("system")
@@ -189,20 +337,6 @@ struct SettingsView: View {
                     Button("查看协议…") { showAcknowledgements = true }
                 }
             }
-        }
-        .formStyle(.grouped)
-        .sheet(isPresented: $showAcknowledgements) {
-            AcknowledgementsView()
-        }
-        .sheet(isPresented: $isShowingConfigImport) {
-            SSHConfigImportSheet(isWelcome: false)
-        }
-        // 跟随主题:系统表单底色会被壁纸渗色(desktop tinting),与主窗口主题不搭
-        .scrollContentBackground(.hidden)
-        .background(themeStore.current.panelBackground)
-        .tint(themeStore.current.accentColor)
-        .frame(width: 460)
-        .navigationTitle("设置")
     }
 
     private var syncStatusLabel: String {
@@ -222,6 +356,55 @@ struct SettingsView: View {
     private var lastSyncLabel: String {
         guard let date = syncMonitor.lastSyncDate else { return String(localized: "尚无记录") }
         return date.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// 模型下拉:落在预设列表里就选中它,否则选「自定义…」并显示输入框
+    private var modelSelection: Binding<String> {
+        Binding(
+            get: { aiModelIsCustom ? AIProvider.customModelTag : aiModel },
+            set: { selected in
+                if selected == AIProvider.customModelTag {
+                    aiModelIsCustom = true
+                } else {
+                    aiModelIsCustom = false
+                    aiModel = selected
+                }
+            }
+        )
+    }
+
+    /// 选中供应商预设:填好地址、接口格式与常见模型(之后可手改)
+    private func applyProvider(_ id: String) {
+        guard let provider = AIProvider.find(id) else { return }
+        aiBaseURL = provider.baseURL
+        aiFormat = provider.format.rawValue
+        aiModel = provider.defaultModel
+        aiModelIsCustom = false
+        AISettingsStore.shared.refresh()
+    }
+
+    /// API Key 保存/清空(只进钥匙串)
+    private func saveAIKey() {
+        let trimmed = aiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            if trimmed.isEmpty {
+                try KeychainStore.delete(account: AISettings.apiKeyAccount)
+                aiKeyNote = String(localized: "已清除 API Key")
+            } else {
+                try KeychainStore.save(trimmed, account: AISettings.apiKeyAccount)
+                aiKeyNote = String(localized: "API Key 已保存到钥匙串")
+            }
+            aiKeySaved = trimmed
+            aiKeyDraft = trimmed
+            // AI 面板在另一个窗口,靠这个可观察状态即时切换到可用态
+            AISettingsStore.shared.refresh()
+        } catch {
+            aiKeyNote = String(localized: "保存失败:\(error.localizedDescription)")
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            aiKeyNote = nil
+        }
     }
 
     private func refreshSyncStatus() async {
@@ -278,5 +461,74 @@ struct SettingsView: View {
         } catch {
             dataMessage = String(localized: "导入失败:\(error.localizedDescription)")
         }
+    }
+}
+
+/// 设置左栏分类
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case terminal, session, ai, security, data, general
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .terminal: return String(localized: "终端")
+        case .session: return String(localized: "会话")
+        case .ai: return String(localized: "AI 助手")
+        case .security: return String(localized: "安全")
+        case .data: return String(localized: "同步与数据")
+        case .general: return String(localized: "通用")
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .terminal: return "terminal"
+        case .session: return "rectangle.stack"
+        case .ai: return "sparkles"
+        case .security: return "lock.shield"
+        case .data: return "icloud"
+        case .general: return "gearshape"
+        }
+    }
+}
+
+/// 设置左栏的一行:圆角底色里的大图标 + 文字
+private struct SettingsTabRow: View {
+    let item: SettingsTab
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var hovering = false
+
+    private var theme: TerminalTheme { ThemeStore.shared.current }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: item.icon)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(isSelected ? Color.white : theme.accentColor)
+                    .frame(width: 28, height: 28)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                            .fill(isSelected ? theme.accentColor : theme.accentSoft)
+                    )
+                Text(item.title)
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(isSelected ? theme.accentSoft : (hovering ? Color.primary.opacity(0.06) : .clear))
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isSelected)
     }
 }

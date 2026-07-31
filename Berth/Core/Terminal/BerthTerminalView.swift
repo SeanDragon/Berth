@@ -42,6 +42,14 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
 
         menu.addItem(.separator())
 
+        // 选中报错丢给 AI 分析(无选区时禁用)
+        let askAIItem = NSMenuItem(title: String(localized: "询问 AI"), action: #selector(berthAskAI), keyEquivalent: "")
+        askAIItem.target = self
+        askAIItem.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: nil)
+        menu.addItem(askAIItem)
+
+        menu.addItem(.separator())
+
         // 复制上条命令输出(需命令集成;无输出时禁用)
         let copyOutputItem = NSMenuItem(title: String(localized: "复制上条命令输出"), action: #selector(berthCopyLastOutput), keyEquivalent: "")
         copyOutputItem.target = self
@@ -57,7 +65,13 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
         MainActor.assumeIsolated {
             copyOutputItem.isEnabled = SessionManager.shared.selected?.hasCommandOutput ?? false
         }
+        askAIItem.isEnabled = !(getSelection() ?? "").isEmpty
         return menu
+    }
+
+    @objc private func berthAskAI() {
+        guard let text = getSelection(), !text.isEmpty else { return }
+        MainActor.assumeIsolated { SessionManager.shared.askAIAboutSelection(text) }
     }
 
     @objc private func berthCopyLastOutput() {

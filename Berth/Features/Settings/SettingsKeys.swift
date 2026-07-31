@@ -23,4 +23,12 @@ enum SettingsKeys {
     static let probeReachability = "app.probeReachability"
     /// 演示模式:主机列表隐藏真实主机,显示内置示例(录屏/截图防泄漏)
     static let demoMode = "app.demoMode"
+    /// AI 助手:模型名(空 = 默认 claude-opus-5)
+    static let aiModel = "ai.model"
+    /// AI 助手:API 地址(空 = https://api.anthropic.com;兼容自建中转)
+    static let aiBaseURL = "ai.baseURL"
+    /// AI 助手:自动执行 AI 建议的命令(危险命令与生产主机仍需确认,默认关)
+    static let aiAutoRunCommands = "ai.autoRunCommands"
+    /// AI 助手:请求格式(anthropic / openAI 兼容)
+    static let aiAPIFormat = "ai.apiFormat"
 }

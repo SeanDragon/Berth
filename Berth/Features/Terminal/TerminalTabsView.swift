@@ -48,6 +48,14 @@ struct TerminalTabsView: View {
                             }
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
+                        if sessionManager.isAIPanelVisible {
+                            Divider().overlay(ThemeStore.shared.current.borderColor)
+                            AIChatPanelView(session: session) {
+                                sessionManager.isAIPanelVisible = false
+                            }
+                            .id(session.id)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
                     }
                 }
                 if let session = sessionManager.selected {
@@ -178,6 +186,15 @@ struct TerminalTabsView: View {
     /// Safari 式按钮组(标题栏右侧):一个大胶囊容器,内含各个圆形悬停按钮
     private var panelButtons: some View {
         HStack(spacing: 2) {
+            PanelIconButton(
+                symbol: "sparkles",
+                help: String(localized: "AI 助手(⌘⇧A)"),
+                tint: sessionManager.isAIPanelVisible ? ThemeStore.shared.current.accentColor : nil
+            ) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    sessionManager.isAIPanelVisible.toggle()
+                }
+            }
             PanelIconButton(
                 symbol: "curlybraces",
                 help: String(localized: "命令片段(⌘⇧S)"),

@@ -26,6 +26,7 @@ final class SessionManager {
     var isInspectorVisible = false
     var isSFTPVisible = false
     var isSnippetsPanelVisible = false
+    var isAIPanelVisible = false
 
     /// 由 App 启动时注入,用于连接后回写主机的探测信息(系统名等)
     @ObservationIgnored var modelContainer: ModelContainer?
@@ -172,6 +173,7 @@ final class SessionManager {
     /// 关闭单个 pane:从其所在标签的树里移除并塌缩;标签空了则整标签移除
     func closePane(_ session: TerminalSession) {
         session.shutdown()
+        AIChatStore.shared.remove(session.id)
         sessions.removeAll { $0.id == session.id }
         guard let tab = tabs.first(where: { $0.root.leafIDs().contains(session.id) }) else {
             afterClose(); return
@@ -204,6 +206,7 @@ final class SessionManager {
     func closeTab(_ tab: PaneTab) {
         for id in tab.root.leafIDs() {
             if let s = session(id) { s.shutdown() }
+            AIChatStore.shared.remove(id)
             sessions.removeAll { $0.id == id }
         }
         tabs.removeAll { $0.id == tab.id }
@@ -215,6 +218,7 @@ final class SessionManager {
         if tabs.isEmpty {
             isSFTPVisible = false
             isInspectorVisible = false
+            isAIPanelVisible = false
         }
         persistOpenTabs()
     }
@@ -245,6 +249,19 @@ final class SessionManager {
     func requestSearch() {
         guard selected != nil else { return }
         searchRequestToken += 1
+    }
+
+    /// 终端里选中的报错/输出丢给 AI 分析:打开面板并直接提问
+    func askAIAboutSelection(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let session = selected else { return }
+        isAIPanelVisible = true
+        AIChatStore.shared.controller(for: session).askAbout(trimmed)
+    }
+
+    /// 有选中内容时才给「询问 AI」的菜单/命令项亮起来
+    var hasTerminalSelection: Bool {
+        !(selected?.terminalView.getSelection() ?? "").isEmpty
     }
 
     /// 记录/停止记录当前会话到文件(记录时弹保存面板选路径)
