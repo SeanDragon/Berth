@@ -186,6 +186,7 @@ struct SidebarView: View {
     private func hostMenu(_ host: Host) -> some View {
         Button("连接") { connect(host) }
         Button("复制 IP") { copyToPasteboard(host.hostname) }
+        Button("复制用户名") { copyToPasteboard(host.username) }
         Button("复制 ssh 命令") { copyToPasteboard(sshCommand(for: host)) }
         if !host.macAddress.isEmpty {
             Button("网络唤醒(Wake-on-LAN)") { wake(host) }
