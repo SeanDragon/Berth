@@ -10,9 +10,11 @@ Berth 是一款 Swift 原生的 macOS SSH 客户端——Metal 渲染终端、�
 
 macOS 15+ · Apple Silicon & Intel · Developer ID 签名与公证
 
-**[⬇︎ 下载 Berth 1.0.0](https://github.com/xinghelee/Berth/releases/latest/download/Berth-1.0.0.dmg)** · [全部版本](https://github.com/xinghelee/Berth/releases)
+**[⬇︎ 下载最新版](https://github.com/xinghelee/Berth/releases/latest)** · [全部版本](https://github.com/xinghelee/Berth/releases)
 
 ## 功能
+
+**AI 助手,直接操作服务器。** ⌘⇧A 打开对话面板,说一句「看看磁盘还剩多少」,AI 在当前 SSH 会话上执行命令、读输出、给结论——命令默认逐条确认。终端里选中报错按 ⌘⌥A 直接问 AI。开箱内置 22 家供应商:Anthropic、OpenAI、DeepSeek、Kimi、智谱、通义、Gemini、Grok 等官方厂商,OpenRouter、Together 等聚合中转,以及 Ollama、LM Studio 本地模型(免 Key)。API Key 只进 Keychain。
 
 **连接复用与无限分屏。** ⌘T 新标签、⌘D 分屏共享同一条 SSH 通道,不再重新握手。分屏可无限嵌套,`exit` 即收起。
 
@@ -32,7 +34,7 @@ macOS 15+ · Apple Silicon & Intel · Developer ID 签名与公证
 
 **二十套内置主题。** Nord、Dracula、Catppuccin、Solarized 尽数内置,另有四套 Berth 原创:松烟墨、玉版宣、夜泊琥珀、祖母绿圣殿。
 
-**键盘优先。** ⌘K 快速连接、⌘P 命令面板、⌘D 分屏、⌘F 搜索、⌘I 服务器信息。Ctrl 组合键全部透传给 shell,你的 Emacs / readline 习惯原样保留。
+**键盘优先。** ⌘K 快速连接、⌘P 命令面板、⌘D 分屏、⌘F 搜索、⌘I 服务器信息、⌘⇧A AI 助手。Ctrl 组合键全部透传给 shell,你的 Emacs / readline 习惯原样保留。
 
 iOS 伴侣应用(`BerthiOS`)共享同一套核心:主机列表、完整主机编辑器、带按键条的 SwiftTerm 终端、密钥管理、Snippets 与主题。
 

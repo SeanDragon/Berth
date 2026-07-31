@@ -10,9 +10,11 @@ Berth is a Swift-native SSH client for macOS — Metal-rendered terminal, connec
 
 macOS 15+ · Apple Silicon & Intel · Developer ID signed & notarized
 
-**[⬇︎ Download Berth 1.0.0](https://github.com/xinghelee/Berth/releases/latest/download/Berth-1.0.0.dmg)** · [All releases](https://github.com/xinghelee/Berth/releases)
+**[⬇︎ Download the latest release](https://github.com/xinghelee/Berth/releases/latest)** · [All releases](https://github.com/xinghelee/Berth/releases)
 
 ## Features
+
+**AI assistant that operates the server.** ⌘⇧A opens a chat panel — ask "how much disk is left?" and the AI runs commands on the current SSH session, reads the output, and answers, with per-command approval by default. Select an error in the terminal and press ⌘⌥A to ask about it. 22 providers work out of the box: Anthropic, OpenAI, DeepSeek, Kimi, Zhipu, Qwen, Gemini, Grok and more, aggregators like OpenRouter and Together, plus local models via Ollama and LM Studio (no key needed). The API key lives in the Keychain only.
 
 **Connection reuse & infinite splits.** ⌘T tabs and ⌘D splits share one SSH channel — no second handshake. Nest splits without limit; `exit` collapses the pane.
 
@@ -32,7 +34,7 @@ macOS 15+ · Apple Silicon & Intel · Developer ID signed & notarized
 
 **Twenty built-in themes.** Nord, Dracula, Catppuccin, Solarized and friends, plus four crafted in-house: Sumi, Xuan, Amber Mooring and Emerald.
 
-**Keyboard first.** ⌘K quick connect, ⌘P command palette, ⌘D split, ⌘F search, ⌘I server info. Every Ctrl combo passes through to the shell — your Emacs and readline habits stay intact.
+**Keyboard first.** ⌘K quick connect, ⌘P command palette, ⌘D split, ⌘F search, ⌘I server info, ⌘⇧A AI assistant. Every Ctrl combo passes through to the shell — your Emacs and readline habits stay intact.
 
 An iOS companion app (`BerthiOS`) shares the same core: host list, full host editor, SwiftTerm terminal with key bar, key management, snippets and themes.
 
