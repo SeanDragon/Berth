@@ -479,6 +479,47 @@ final class TerminalSession: Identifiable {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
+    /// 远端当前工作目录(OSC 7 上报;未启用命令集成时为 nil)。AI 助手提示词用。
+    var currentRemoteDirectory: String? { lastRemoteDirectory }
+
+    /// AI 助手用:同一连接上另开 exec 通道执行命令(不影响 PTY)。
+    /// stderr 合并进输出,末尾标记捕获退出码,因此非零退出不会让 executeCommand 抛错。
+    /// 返回 nil = 会话未连接。5 分钟超时(防 tail -f 之类挂死)。
+    func runAICommand(_ command: String) async -> (output: String, exitCode: Int?)? {
+        guard let client else { return nil }
+        let marker = "__BERTH_AI_EXIT__"
+        // 命令跑在子 shell 里:命令自己 exit 非零时只结束子 shell,包装脚本仍能打出标记行并
+        // 以 0 退出 —— 否则 Citadel 会按非零 exit-status 抛错,拿不到输出也拿不到退出码。
+        let script = "exec 2>&1\n(\n" + command + "\n)\nprintf '\\n\(marker):%s\\n' \"$?\""
+        let wrapped = "sh -c \(shellQuote(script))"
+        do {
+            let buffer = try await withThrowingTaskGroup(of: ByteBuffer.self) { group in
+                group.addTask {
+                    try await client.executeCommand(wrapped, maxResponseSize: 1 << 20, mergeStreams: true)
+                }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(300))
+                    throw CancellationError()
+                }
+                guard let first = try await group.next() else { throw CancellationError() }
+                group.cancelAll()
+                return first
+            }
+            var text = String(buffer: buffer)
+            var exitCode: Int?
+            if let range = text.range(of: "\n\(marker):", options: .backwards) {
+                let tail = text[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+                exitCode = Int(tail)
+                text = String(text[..<range.lowerBound])
+            }
+            return (text, exitCode)
+        } catch is CancellationError {
+            return (String(localized: "命令执行超时(5 分钟),可能在等待输入或长时间运行。"), nil)
+        } catch {
+            return (String(localized: "命令执行失败:\(error.localizedDescription)"), nil)
+        }
+    }
+
     enum ShellHighlightResult { case installed, alreadyEnabled, notZsh(String), failed(String) }
     enum CommandIntegrationResult { case installed, alreadyEnabled, failed(String) }
 

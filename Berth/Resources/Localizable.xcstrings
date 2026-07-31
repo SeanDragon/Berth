@@ -11,6 +11,16 @@
         }
       }
     },
+    "%@ 文档与模型列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ docs and model list"
+          }
+        }
+      }
+    },
     "%@%@": {
       "localizations": {
         "en": {
@@ -127,6 +137,16 @@
         }
       }
     },
+    "%lld 处 Berth 读不懂,已跳过": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld things Berth couldn't read, skipped"
+          }
+        }
+      }
+    },
     "%lld 核": {
       "localizations": {
         "en": {
@@ -211,6 +231,116 @@
       },
       "shouldTranslate": false
     },
+    "AI 出于安全策略拒绝了这次请求。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI declined this request for safety reasons."
+          }
+        }
+      }
+    },
+    "AI 助手": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Assistant"
+          }
+        }
+      }
+    },
+    "AI 助手(⌘⇧A)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Assistant (⌘⇧A)"
+          }
+        }
+      }
+    },
+    "AI 助手面板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Assistant Panel"
+          }
+        }
+      }
+    },
+    "AI 服务返回错误": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The AI service returned an error"
+          }
+        }
+      }
+    },
+    "AI 没有返回内容。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI returned no content."
+          }
+        }
+      }
+    },
+    "AI 请求失败(HTTP %@)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI request failed (HTTP %@)"
+          }
+        }
+      }
+    },
+    "API Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key"
+          }
+        }
+      }
+    },
+    "API Key 已保存到钥匙串": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key saved to Keychain"
+          }
+        }
+      }
+    },
+    "API Key 无效或已失效,请在设置中检查。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The API Key is invalid or expired. Check it in Settings."
+          }
+        }
+      }
+    },
+    "API 地址": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API URL"
+          }
+        }
+      }
+    },
     "Aa": {
       "localizations": {
         "en": {
@@ -232,6 +362,16 @@
         }
       },
       "shouldTranslate": false
+    },
+    "Anthropic 原生": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anthropic native"
+          }
+        }
+      }
     },
     "Ayu 清晨(浅色)": {
       "localizations": {
@@ -294,6 +434,16 @@
         }
       }
     },
+    "DeepSeek 深度求索": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DeepSeek"
+          }
+        }
+      }
+    },
     "GitHub Light(浅色)": {
       "localizations": {
         "en": {
@@ -321,6 +471,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "HTTP proxy refused: %@"
+          }
+        }
+      }
+    },
+    "Host 后面没有别名,该块被忽略": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host has no alias, this block was ignored"
+          }
+        }
+      }
+    },
+    "Include %@ 未展开,其中的主机不会出现在列表里": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Include %@ isn't expanded, so hosts inside it won't appear in this list"
+          }
+        }
+      }
+    },
+    "Key 只存钥匙串(随 iCloud 钥匙串同步),本地模型(Ollama / LM Studio)可留空。地址只填域名时自动补 /v1,已带路径则按原样用。中转网关若提示不允许 /v1/messages,把接口格式切到「OpenAI 兼容」。开启自动执行后,危险命令与生产警戒主机仍会要求确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The key is stored only in the Keychain (synced via iCloud Keychain); leave it empty for local models (Ollama / LM Studio). A bare domain gets /v1 appended; a URL that already has a path is used as-is. If a relay says /v1/messages is not allowed, switch the API format to OpenAI-compatible. Even with auto-run on, dangerous commands and production hosts still require approval."
+          }
+        }
+      }
+    },
+    "Key 只存钥匙串(随 iCloud 钥匙串同步)。默认直连 Anthropic API,可改为兼容的中转地址。开启自动执行后,危险命令与生产警戒主机仍会要求确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The key is stored only in the Keychain (synced via iCloud Keychain). Connects directly to the Anthropic API by default; a compatible proxy URL also works. Even with auto-run on, dangerous commands and production hosts still require approval."
           }
         }
       }
@@ -355,6 +545,16 @@
         }
       }
     },
+    "LM Studio(本地)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LM Studio (local)"
+          }
+        }
+      }
+    },
     "MAC 地址(Wake-on-LAN)": {
       "localizations": {
         "en": {
@@ -375,12 +575,52 @@
         }
       }
     },
+    "Match %@ 块已跳过,其中的设置不会生效": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Match %@ block skipped, the settings inside it won't apply"
+          }
+        }
+      }
+    },
+    "Moonshot 月之暗面 (Kimi)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Moonshot (Kimi)"
+          }
+        }
+      }
+    },
+    "Ollama(本地)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ollama (local)"
+          }
+        }
+      }
+    },
     "One Light(浅色)": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "One Light"
+          }
+        }
+      }
+    },
+    "OpenAI 兼容": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "OpenAI-compatible"
           }
         }
       }
@@ -402,6 +642,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Passphrase (leave empty if none)"
+          }
+        }
+      }
+    },
+    "Port %@ 不是有效端口,按 22 处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Port %@ isn't a valid port, using 22 instead"
           }
         }
       }
@@ -618,6 +868,36 @@
         }
       }
     },
+    "iCloud 同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud Sync"
+          }
+        }
+      }
+    },
+    "iCloud 暂不可用,稍后自动重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud temporarily unavailable — will retry"
+          }
+        }
+      }
+    },
+    "iCloud 账号受限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud account is restricted"
+          }
+        }
+      }
+    },
     "iOS 版暂不支持「%@」认证方式": {
       "localizations": {
         "en": {
@@ -648,12 +928,53 @@
         }
       }
     },
+    "ssh_config": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ssh_config"
+          }
+        }
+      },
+      "shouldTranslate": false
+    },
+    "ssh_config 新增 %lld 个主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld new hosts in ssh_config"
+          }
+        }
+      }
+    },
     "user@host:port 或 ssh 命令": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "user@host:port or an ssh command"
+          }
+        }
+      }
+    },
+    "~/.ssh/config 主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hosts from ~/.ssh/config"
+          }
+        }
+      }
+    },
+    "~/.ssh/config 里暂时没有可导入的主机。你可以直接新建主机,或按 ⌘K 粘贴一条 ssh 命令连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There's nothing to import from ~/.ssh/config yet. Add a host directly, or press ⌘K and paste an ssh command."
           }
         }
       }
@@ -771,6 +1092,16 @@
         }
       }
     },
+    "上次同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last synced"
+          }
+        }
+      }
+    },
     "下一条命令": {
       "localizations": {
         "en": {
@@ -821,6 +1152,26 @@
         }
       }
     },
+    "不显示": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show None"
+          }
+        }
+      }
+    },
+    "不显示 config 主机(共 %lld 个)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not showing config hosts (%lld available)"
+          }
+        }
+      }
+    },
     "中键粘贴": {
       "localizations": {
         "en": {
@@ -847,6 +1198,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Host"
+          }
+        }
+      }
+    },
+    "主机、分组、端口转发、片段、模板与触发器经 iCloud 私有库自动同步;密码与私钥只在本机钥匙串,永不上传。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hosts, groups, port forwards, snippets, workspaces and triggers sync automatically through your private iCloud database. Passwords and private keys stay in the local Keychain and are never uploaded."
+          }
+        }
+      }
+    },
+    "主机、分组、端口转发、片段、模板与触发器经 iCloud 私有库自动同步;密码与私钥只在本机钥匙串,永不上传。「立即同步」推送本地改动;云端改动由系统自动拉取。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hosts, groups, port forwards, snippets, workspaces and triggers sync automatically through your private iCloud database. Passwords and private keys stay in the local Keychain and are never uploaded. “Sync now” pushes local changes; incoming changes are pulled by the system automatically."
+          }
+        }
+      }
+    },
+    "主机列表": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host List"
           }
         }
       }
@@ -921,6 +1302,16 @@
         }
       }
     },
+    "仅同步在 Mac / iPhone 上手动添加的主机;Mac 上从 ~/.ssh/config 导入的主机是本机私有,不会出现在这里。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only hosts you add manually on Mac or iPhone sync here. Hosts imported from ~/.ssh/config on the Mac are local to that machine and don't appear."
+          }
+        }
+      }
+    },
     "从 config 删除…": {
       "localizations": {
         "en": {
@@ -937,6 +1328,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remove “%@” from ~/.ssh/config?"
+          }
+        }
+      }
+    },
+    "从 ~/.ssh/config 导入…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import from ~/.ssh/config…"
           }
         }
       }
@@ -991,6 +1392,26 @@
         }
       }
     },
+    "代码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "code"
+          }
+        }
+      }
+    },
+    "以后再说": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not Now"
+          }
+        }
+      }
+    },
     "会修改你的 ~/.ssh/config 文件(自动备份为 config.berth-backup),系统 ssh 也会随之生效。": {
       "localizations": {
         "en": {
@@ -1007,6 +1428,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Session"
+          }
+        }
+      }
+    },
+    "会话未连接,无法执行命令。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session is not connected; the command was not run."
           }
         }
       }
@@ -1081,6 +1512,26 @@
         }
       }
     },
+    "例如「看看磁盘还剩多少」「nginx 挂了没」。\nAI 建议的命令默认需要你确认后才执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Try “How much disk space is left?” or “Is nginx down?”\nCommands suggested by AI require your approval before running."
+          }
+        }
+      }
+    },
+    "供应商": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Provider"
+          }
+        }
+      }
+    },
     "保存": {
       "localizations": {
         "en": {
@@ -1107,6 +1558,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Save the host first to add port forwards."
+          }
+        }
+      }
+    },
+    "保存失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to save: %@"
+          }
+        }
+      }
+    },
+    "保存密码(经 iCloud 钥匙串同步)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save password (synced via iCloud Keychain)"
           }
         }
       }
@@ -1211,6 +1682,16 @@
         }
       }
     },
+    "先配置 API Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set up an API Key first"
+          }
+        }
+      }
+    },
     "光标样式": {
       "localizations": {
         "en": {
@@ -1227,6 +1708,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Blink cursor"
+          }
+        }
+      }
+    },
+    "全不选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select None"
+          }
+        }
+      }
+    },
+    "全选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select All"
+          }
+        }
+      }
+    },
+    "全选时,以后 config 里新增的主机也会自动出现在侧栏。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With everything selected, hosts you add to the config later show up in the sidebar automatically."
           }
         }
       }
@@ -1267,6 +1778,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Close"
+          }
+        }
+      }
+    },
+    "关闭 AI 助手面板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide AI Assistant Panel"
           }
         }
       }
@@ -1411,6 +1932,16 @@
         }
       }
     },
+    "写入终端命令行,不自动回车": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Insert into the terminal without pressing Return"
+          }
+        }
+      }
+    },
     "分组": {
       "localizations": {
         "en": {
@@ -1501,6 +2032,16 @@
         }
       }
     },
+    "别名 %@ 重复定义,按先出现的一份处理": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alias %@ is defined more than once, using the first one"
+          }
+        }
+      }
+    },
     "刷新": {
       "localizations": {
         "en": {
@@ -1521,12 +2062,32 @@
         }
       }
     },
+    "勾选要显示在侧栏的主机。Berth 只读 ~/.ssh/config,不会改动它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tick the hosts you want in the sidebar. Berth only reads ~/.ssh/config, it never changes it."
+          }
+        }
+      }
+    },
     "匹配终端输出的正则,命中即发系统通知(如日志出现 ERROR)": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "A regex matched against terminal output fires a system notification (e.g. ERROR in logs)"
+          }
+        }
+      }
+    },
+    "危险命令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dangerous command"
           }
         }
       }
@@ -1551,12 +2112,42 @@
         }
       }
     },
+    "发送(⏎)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send (⏎)"
+          }
+        }
+      }
+    },
     "发送到当前终端": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Send to Current Terminal"
+          }
+        }
+      }
+    },
+    "发送到终端": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send to Terminal"
+          }
+        }
+      }
+    },
+    "发送到终端?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send to the terminal?"
           }
         }
       }
@@ -1587,6 +2178,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Cancel Connection"
+          }
+        }
+      }
+    },
+    "同步与数据": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync & Data"
+          }
+        }
+      }
+    },
+    "同步中…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing…"
           }
         }
       }
@@ -1691,6 +2302,26 @@
         }
       }
     },
+    "命令执行失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command failed: %@"
+          }
+        }
+      }
+    },
+    "命令执行超时(5 分钟),可能在等待输入或长时间运行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command timed out (5 minutes); it may be waiting for input or long-running."
+          }
+        }
+      }
+    },
     "命令片段": {
       "localizations": {
         "en": {
@@ -1761,12 +2392,32 @@
         }
       }
     },
+    "回复超长被截断,可让 AI 继续。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The reply was truncated; ask AI to continue."
+          }
+        }
+      }
+    },
     "回车": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Return"
+          }
+        }
+      }
+    },
+    "在 ~/.ssh/config 里找到 %lld 个主机。勾选想显示在侧栏的,其余以后可以在设置里再加。Berth 只读这个文件,不会改动它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Found %lld hosts in ~/.ssh/config. Tick the ones you want in the sidebar — you can add the rest later in Settings. Berth only reads this file, it never changes it."
           }
         }
       }
@@ -1817,6 +2468,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Show menu bar icon (session switcher / quick connect)"
+          }
+        }
+      }
+    },
+    "在设置的「AI 助手」里填入 Anthropic API Key 后即可通过对话操作服务器。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter your Anthropic API Key under “AI Assistant” in Settings to operate the server by chatting."
           }
         }
       }
@@ -1941,12 +2602,32 @@
         }
       }
     },
+    "复制用户名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy Username"
+          }
+        }
+      }
+    },
     "复用现有连接,正在打开终端通道…": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Reusing existing connection, opening terminal channel…"
+          }
+        }
+      }
+    },
+    "外观": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appearance"
           }
         }
       }
@@ -2047,6 +2728,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Done"
+          }
+        }
+      }
+    },
+    "官方 / 云厂商": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vendors"
           }
         }
       }
@@ -2271,6 +2962,16 @@
         }
       }
     },
+    "尚无记录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No record yet"
+          }
+        }
+      }
+    },
     "左右分屏": {
       "localizations": {
         "en": {
@@ -2321,6 +3022,26 @@
         }
       }
     },
+    "已停止": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stopped"
+          }
+        }
+      }
+    },
+    "已停用(调试)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disabled (debug)"
+          }
+        }
+      }
+    },
     "已取消连接:你没有信任该服务器的主机密钥。": {
       "localizations": {
         "en": {
@@ -2337,6 +3058,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Enabled — restart the shell or run source ~/.zshrc to take effect"
+          }
+        }
+      }
+    },
+    "已启用,随 iCloud 自动同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On — syncing via iCloud"
           }
         }
       }
@@ -2381,6 +3112,26 @@
         }
       }
     },
+    "已拒绝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Declined"
+          }
+        }
+      }
+    },
+    "已推送本地改动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local changes pushed"
+          }
+        }
+      }
+    },
     "已断开": {
       "localizations": {
         "en": {
@@ -2391,12 +3142,42 @@
         }
       }
     },
+    "已清除 API Key": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Key cleared"
+          }
+        }
+      }
+    },
+    "已自动跳过 %lld 条 Git 托管别名(github.com 等,没有可用的 shell)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skipped %lld Git hosting aliases automatically (github.com and friends have no usable shell)."
+          }
+        }
+      }
+    },
     "已装 zsh 并设为默认 shell + 启用高亮。当前会话仍是旧 shell,重连后生效。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Installed zsh as the default shell and enabled highlighting. This session still runs the old shell; reconnect to take effect."
+          }
+        }
+      }
+    },
+    "已达到单次对话的命令轮数上限,请继续对话让 AI 接着做。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reached the per-message command round limit; send another message to let AI continue."
           }
         }
       }
@@ -2417,6 +3198,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Connected %@"
+          }
+        }
+      }
+    },
+    "已选 %lld/%lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld of %lld selected"
           }
         }
       }
@@ -2461,6 +3252,16 @@
         }
       }
     },
+    "开始使用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Get Started"
+          }
+        }
+      }
+    },
     "当前": {
       "localizations": {
         "en": {
@@ -2487,6 +3288,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Current login shell is %@; command highlighting requires zsh."
+          }
+        }
+      }
+    },
+    "待确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Awaiting approval"
           }
         }
       }
@@ -2551,6 +3362,16 @@
         }
       }
     },
+    "打开 AI 助手面板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show AI Assistant Panel"
+          }
+        }
+      }
+    },
     "打开 Berth": {
       "localizations": {
         "en": {
@@ -2587,6 +3408,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open Server Info Panel"
+          }
+        }
+      }
+    },
+    "打开设置…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Settings…"
           }
         }
       }
@@ -2651,6 +3482,16 @@
         }
       }
     },
+    "拒绝": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decline"
+          }
+        }
+      }
+    },
     "指纹": {
       "localizations": {
         "en": {
@@ -2667,6 +3508,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Probe hosts for reachability (tints sidebar status bars)"
+          }
+        }
+      }
+    },
+    "探测主机是否在线(列表状态条着色)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Probe host reachability (color the status bar)"
+          }
+        }
+      }
+    },
+    "接口地址不存在。若网关只支持某一种格式,请在设置里切换接口格式。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endpoint not found. If your gateway supports only one format, switch the API format in Settings."
+          }
+        }
+      }
+    },
+    "接口格式": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "API Format"
           }
         }
       }
@@ -2871,6 +3742,16 @@
         }
       }
     },
+    "无效的服务器响应": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invalid server response"
+          }
+        }
+      }
+    },
     "无权限绑定该端口(<1024 需特权)": {
       "localizations": {
         "en": {
@@ -2951,12 +3832,52 @@
         }
       }
     },
+    "显示 %lld / %lld 个主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing %lld of %lld hosts"
+          }
+        }
+      }
+    },
+    "显示全部 %lld 个主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Showing all %lld hosts"
+          }
+        }
+      }
+    },
     "显示名": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Display name"
+          }
+        }
+      }
+    },
+    "显示输出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show Output"
+          }
+        }
+      }
+    },
+    "显示这 %lld 个": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show These %lld"
           }
         }
       }
@@ -2971,12 +3892,32 @@
         }
       }
     },
+    "智谱 GLM": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zhipu GLM"
+          }
+        }
+      }
+    },
     "暂无转发。点右上「+」临时加一条(不落库)。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "No forwards. Tap + to add an ad-hoc one (not saved)."
+          }
+        }
+      }
+    },
+    "最近尝试 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last attempt %@"
           }
         }
       }
@@ -3061,6 +4002,16 @@
         }
       }
     },
+    "未登录 iCloud 账号": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not signed in to iCloud"
+          }
+        }
+      }
+    },
     "未识别的包管理器,无法自动安装 zsh": {
       "localizations": {
         "en": {
@@ -3111,6 +4062,16 @@
         }
       }
     },
+    "本地": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local"
+          }
+        }
+      }
+    },
     "本地 %@:%@ → %@:%@": {
       "localizations": {
         "en": {
@@ -3127,6 +4088,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Local (-L)"
+          }
+        }
+      }
+    },
+    "本地无待同步改动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No local changes to sync"
           }
         }
       }
@@ -3271,6 +4242,66 @@
         }
       }
     },
+    "检查中…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking…"
+          }
+        }
+      }
+    },
+    "模型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model"
+          }
+        }
+      }
+    },
+    "模型名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model name"
+          }
+        }
+      }
+    },
+    "模型或接口地址不存在,请在设置中检查模型名与 API 地址。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Model or endpoint not found. Check the model name and API URL in Settings."
+          }
+        }
+      }
+    },
+    "模型需支持工具调用(function calling),否则 AI 无法在服务器上执行命令。Key 只存钥匙串(随 iCloud 钥匙串同步),本地模型(Ollama / LM Studio)可留空。地址只填域名时自动补 /v1,已带路径则按原样用。中转网关若提示不允许 /v1/messages,把接口格式切到「OpenAI 兼容」。开启自动执行后,危险命令与生产警戒主机仍会要求确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model must support tool calling (function calling), otherwise the AI cannot run commands on the server. The key is stored only in the Keychain (synced via iCloud Keychain); leave it empty for local models (Ollama / LM Studio). A bare domain gets /v1 appended; a URL that already has a path is used as-is. If a relay says /v1/messages is not allowed, switch the API format to OpenAI-compatible. Even with auto-run on, dangerous commands and production hosts still require approval."
+          }
+        }
+      }
+    },
+    "模型需支持工具调用(function calling),否则 AI 无法在服务器上执行命令。Key 只存钥匙串(随 iCloud 钥匙串同步),本地模型(Ollama / LM Studio)可留空。地址末尾已是版本号(如 /v1、/api/paas/v4)就按原样用,否则自动补 /v1。中转网关若提示不允许 /v1/messages,把接口格式切到「OpenAI 兼容」。开启自动执行后,危险命令与生产警戒主机仍会要求确认。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The model must support tool calling (function calling), otherwise the AI cannot run commands on the server. The key is stored only in the Keychain (synced via iCloud Keychain); leave it empty for local models (Ollama / LM Studio). A URL already ending in a version segment (e.g. /v1, /api/paas/v4) is used as-is; otherwise /v1 is appended. If a relay says /v1/messages is not allowed, switch the API format to OpenAI-compatible. Even with auto-run on, dangerous commands and production hosts still require approval."
+          }
+        }
+      }
+    },
     "模板名称": {
       "localizations": {
         "en": {
@@ -3287,6 +4318,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Orange"
+          }
+        }
+      }
+    },
+    "欢迎使用 Berth": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcome to Berth"
           }
         }
       }
@@ -3381,6 +4422,16 @@
         }
       }
     },
+    "没有找到可导入的主机": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hosts found to import"
+          }
+        }
+      }
+    },
     "活跃会话": {
       "localizations": {
         "en": {
@@ -3407,6 +4458,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Add Forward"
+          }
+        }
+      }
+    },
+    "清空对话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear Conversation"
+          }
+        }
+      }
+    },
+    "点击左侧主机开始连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click a host on the left to connect"
           }
         }
       }
@@ -3507,6 +4578,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Generate a new key, or import an existing OpenSSH private key.\nPrivate keys are stored only in the macOS Keychain, never on disk."
+          }
+        }
+      }
+    },
+    "用对话操作服务器": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operate the server by chatting"
           }
         }
       }
@@ -3621,6 +4702,16 @@
         }
       }
     },
+    "硅基流动 SiliconFlow": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SiliconFlow"
+          }
+        }
+      }
+    },
     "确定": {
       "localizations": {
         "en": {
@@ -3721,6 +4812,16 @@
         }
       }
     },
+    "立即同步": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sync now"
+          }
+        }
+      }
+    },
     "立即重启": {
       "localizations": {
         "en": {
@@ -3811,6 +4912,16 @@
         }
       }
     },
+    "第 %lld 行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Line %lld"
+          }
+        }
+      }
+    },
     "第三方开源库": {
       "localizations": {
         "en": {
@@ -3837,6 +4948,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Waiting for authentication (Touch ID)…"
+          }
+        }
+      }
+    },
+    "筛选": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filter"
+          }
+        }
+      }
+    },
+    "管理…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Manage…"
           }
         }
       }
@@ -3981,6 +5112,16 @@
         }
       }
     },
+    "经 ProxyJump %@ 连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connects through ProxyJump %@"
+          }
+        }
+      }
+    },
     "经代理 %@:%@ 连接 %@:%@…": {
       "localizations": {
         "en": {
@@ -4071,12 +5212,52 @@
         }
       }
     },
+    "聚合与中转": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggregators & Relays"
+          }
+        }
+      }
+    },
+    "自动执行 AI 建议的命令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto-run commands suggested by AI"
+          }
+        }
+      }
+    },
     "自动重连中(第 %lld 次)": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Reconnecting (attempt %lld)"
+          }
+        }
+      }
+    },
+    "自定义": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom"
+          }
+        }
+      }
+    },
+    "自定义…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom…"
           }
         }
       }
@@ -4097,6 +5278,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rule"
+          }
+        }
+      }
+    },
+    "解释下面这段终端输出,如果是报错请给出原因和修复办法:": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Explain the terminal output below; if it is an error, give the cause and how to fix it:"
           }
         }
       }
@@ -4171,6 +5362,16 @@
         }
       }
     },
+    "让 AI 在这台服务器上执行操作…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask AI to do something on this server…"
+          }
+        }
+      }
+    },
     "记录会话到文件…": {
       "localizations": {
         "en": {
@@ -4207,6 +5408,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Settings (⌘,)"
+          }
+        }
+      }
+    },
+    "询问 AI": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask AI"
+          }
+        }
+      }
+    },
+    "询问 AI(选中的内容)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ask AI About Selection"
           }
         }
       }
@@ -4271,12 +5492,32 @@
         }
       }
     },
+    "请求过于频繁,请稍后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Too many requests. Try again later."
+          }
+        }
+      }
+    },
     "请编辑该主机并重新输入密码,保存后即可恢复。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Edit the host and re-enter the password; saving restores it."
+          }
+        }
+      }
+    },
+    "请输入此主机的密码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the password for this host"
           }
         }
       }
@@ -4327,6 +5568,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Loading…"
+          }
+        }
+      }
+    },
+    "读取失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't read the file: %@"
           }
         }
       }
@@ -4431,6 +5682,16 @@
         }
       }
     },
+    "输入密码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter password"
+          }
+        }
+      }
+    },
     "输入路径,回车跳转": {
       "localizations": {
         "en": {
@@ -4457,6 +5718,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Output Triggers…"
+          }
+        }
+      }
+    },
+    "运行": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Run"
           }
         }
       }
@@ -4521,6 +5792,16 @@
         }
       }
     },
+    "这是局域网地址,多半是 macOS 拦下了本地网络访问 —— 打开「系统设置 › 隐私与安全性 › 本地网络」,把 Berth 的开关打开再试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's a local network address, so macOS has most likely blocked the connection — open System Settings › Privacy & Security › Local Network and turn Berth on, then try again."
+          }
+        }
+      }
+    },
     "远程 %@:%@ → %@:%@": {
       "localizations": {
         "en": {
@@ -4557,6 +5838,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remote port"
+          }
+        }
+      }
+    },
+    "连不上 %@:%@:没有到主机的路由,检查地址、网段和网络连接。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach %@:%@ — no route to host. Check the address, the subnet, and your network connection."
+          }
+        }
+      }
+    },
+    "连不上 %@:%@:没有到主机的路由。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Can't reach %@:%@ — no route to host. "
           }
         }
       }
@@ -4731,12 +6032,32 @@
         }
       }
     },
+    "退出码 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Exit code %@"
+          }
+        }
+      }
+    },
     "选中即复制到剪贴板": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Copy on select"
+          }
+        }
+      }
+    },
+    "选择 ~/.ssh/config 里哪些主机显示在侧栏。Berth 只读这个文件,不会修改它。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose which hosts from ~/.ssh/config appear in the sidebar. Berth only reads this file, it never modifies it."
           }
         }
       }
@@ -4821,6 +6142,26 @@
         }
       }
     },
+    "阿里云百炼 (通义千问)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alibaba Bailian (Qwen)"
+          }
+        }
+      }
+    },
+    "隐藏输出": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Output"
+          }
+        }
+      }
+    },
     "霓虹 '84": {
       "localizations": {
         "en": {
@@ -4877,607 +6218,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Advanced"
-          }
-        }
-      }
-    },
-    "iCloud 同步": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud Sync"
-          }
-        }
-      }
-    },
-    "主机、分组、端口转发、片段、模板与触发器经 iCloud 私有库自动同步;密码与私钥只在本机钥匙串,永不上传。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hosts, groups, port forwards, snippets, workspaces and triggers sync automatically through your private iCloud database. Passwords and private keys stay in the local Keychain and are never uploaded."
-          }
-        }
-      }
-    },
-    "已停用(调试)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Disabled (debug)"
-          }
-        }
-      }
-    },
-    "已启用,随 iCloud 自动同步": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "On — syncing via iCloud"
-          }
-        }
-      }
-    },
-    "未登录 iCloud 账号": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not signed in to iCloud"
-          }
-        }
-      }
-    },
-    "iCloud 账号受限": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud account is restricted"
-          }
-        }
-      }
-    },
-    "iCloud 暂不可用,稍后自动重试": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "iCloud temporarily unavailable — will retry"
-          }
-        }
-      }
-    },
-    "检查中…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Checking…"
-          }
-        }
-      }
-    },
-    "外观": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Appearance"
-          }
-        }
-      }
-    },
-    "请输入此主机的密码": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter the password for this host"
-          }
-        }
-      }
-    },
-    "输入密码": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter password"
-          }
-        }
-      }
-    },
-    "保存密码(经 iCloud 钥匙串同步)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Save password (synced via iCloud Keychain)"
-          }
-        }
-      }
-    },
-    "仅同步在 Mac / iPhone 上手动添加的主机;Mac 上从 ~/.ssh/config 导入的主机是本机私有,不会出现在这里。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Only hosts you add manually on Mac or iPhone sync here. Hosts imported from ~/.ssh/config on the Mac are local to that machine and don't appear."
-          }
-        }
-      }
-    },
-    "同步中…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Syncing…"
-          }
-        }
-      }
-    },
-    "上次同步": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last synced"
-          }
-        }
-      }
-    },
-    "尚无记录": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No record yet"
-          }
-        }
-      }
-    },
-    "立即同步": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sync now"
-          }
-        }
-      }
-    },
-    "主机、分组、端口转发、片段、模板与触发器经 iCloud 私有库自动同步;密码与私钥只在本机钥匙串,永不上传。「立即同步」推送本地改动;云端改动由系统自动拉取。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hosts, groups, port forwards, snippets, workspaces and triggers sync automatically through your private iCloud database. Passwords and private keys stay in the local Keychain and are never uploaded. “Sync now” pushes local changes; incoming changes are pulled by the system automatically."
-          }
-        }
-      }
-    },
-    "已推送本地改动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Local changes pushed"
-          }
-        }
-      }
-    },
-    "本地无待同步改动": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No local changes to sync"
-          }
-        }
-      }
-    },
-    "主机列表": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Host List"
-          }
-        }
-      }
-    },
-    "探测主机是否在线(列表状态条着色)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Probe host reachability (color the status bar)"
-          }
-        }
-      }
-    },
-    "欢迎使用 Berth": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Welcome to Berth"
-          }
-        }
-      }
-    },
-    "~/.ssh/config 主机": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hosts from ~/.ssh/config"
-          }
-        }
-      }
-    },
-    "~/.ssh/config 里暂时没有可导入的主机。你可以直接新建主机,或按 ⌘K 粘贴一条 ssh 命令连接。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "There's nothing to import from ~/.ssh/config yet. Add a host directly, or press ⌘K and paste an ssh command."
-          }
-        }
-      }
-    },
-    "在 ~/.ssh/config 里找到 %lld 个主机。勾选想显示在侧栏的,其余以后可以在设置里再加。Berth 只读这个文件,不会改动它。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Found %lld hosts in ~/.ssh/config. Tick the ones you want in the sidebar — you can add the rest later in Settings. Berth only reads this file, it never changes it."
-          }
-        }
-      }
-    },
-    "勾选要显示在侧栏的主机。Berth 只读 ~/.ssh/config,不会改动它。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tick the hosts you want in the sidebar. Berth only reads ~/.ssh/config, it never changes it."
-          }
-        }
-      }
-    },
-    "已选 %lld/%lld": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld of %lld selected"
-          }
-        }
-      }
-    },
-    "全选": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Select All"
-          }
-        }
-      }
-    },
-    "全不选": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Select None"
-          }
-        }
-      }
-    },
-    "筛选": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Filter"
-          }
-        }
-      }
-    },
-    "经 ProxyJump %@ 连接": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Connects through ProxyJump %@"
-          }
-        }
-      }
-    },
-    "%lld 处 Berth 读不懂,已跳过": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld things Berth couldn't read, skipped"
-          }
-        }
-      }
-    },
-    "第 %lld 行": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Line %lld"
-          }
-        }
-      }
-    },
-    "已自动跳过 %lld 条 Git 托管别名(github.com 等,没有可用的 shell)。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skipped %lld Git hosting aliases automatically (github.com and friends have no usable shell)."
-          }
-        }
-      }
-    },
-    "全选时,以后 config 里新增的主机也会自动出现在侧栏。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "With everything selected, hosts you add to the config later show up in the sidebar automatically."
-          }
-        }
-      }
-    },
-    "以后再说": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not Now"
-          }
-        }
-      }
-    },
-    "开始使用": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Get Started"
-          }
-        }
-      }
-    },
-    "不显示": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show None"
-          }
-        }
-      }
-    },
-    "显示这 %lld 个": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show These %lld"
-          }
-        }
-      }
-    },
-    "读取失败:%@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't read the file: %@"
-          }
-        }
-      }
-    },
-    "Include %@ 未展开,其中的主机不会出现在列表里": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Include %@ isn't expanded, so hosts inside it won't appear in this list"
-          }
-        }
-      }
-    },
-    "Match %@ 块已跳过,其中的设置不会生效": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Match %@ block skipped, the settings inside it won't apply"
-          }
-        }
-      }
-    },
-    "Host 后面没有别名,该块被忽略": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Host has no alias, this block was ignored"
-          }
-        }
-      }
-    },
-    "Port %@ 不是有效端口,按 22 处理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Port %@ isn't a valid port, using 22 instead"
-          }
-        }
-      }
-    },
-    "别名 %@ 重复定义,按先出现的一份处理": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alias %@ is defined more than once, using the first one"
-          }
-        }
-      }
-    },
-    "ssh_config": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ssh_config"
-          }
-        }
-      },
-      "shouldTranslate": false
-    },
-    "显示全部 %lld 个主机": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Showing all %lld hosts"
-          }
-        }
-      }
-    },
-    "显示 %lld / %lld 个主机": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Showing %lld of %lld hosts"
-          }
-        }
-      }
-    },
-    "不显示 config 主机(共 %lld 个)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Not showing config hosts (%lld available)"
-          }
-        }
-      }
-    },
-    "没有找到可导入的主机": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No hosts found to import"
-          }
-        }
-      }
-    },
-    "管理…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Manage…"
-          }
-        }
-      }
-    },
-    "选择 ~/.ssh/config 里哪些主机显示在侧栏。Berth 只读这个文件,不会修改它。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose which hosts from ~/.ssh/config appear in the sidebar. Berth only reads this file, it never modifies it."
-          }
-        }
-      }
-    },
-    "ssh_config 新增 %lld 个主机": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld new hosts in ssh_config"
-          }
-        }
-      }
-    },
-    "从 ~/.ssh/config 导入…": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Import from ~/.ssh/config…"
-          }
-        }
-      }
-    },
-    "点击左侧主机开始连接": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Click a host on the left to connect"
-          }
-        }
-      }
-    },
-    "这是局域网地址,多半是 macOS 拦下了本地网络访问 —— 打开「系统设置 › 隐私与安全性 › 本地网络」,把 Berth 的开关打开再试。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "That's a local network address, so macOS has most likely blocked the connection — open System Settings › Privacy & Security › Local Network and turn Berth on, then try again."
-          }
-        }
-      }
-    },
-    "连不上 %@:%@:没有到主机的路由。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Can't reach %@:%@ — no route to host. "
-          }
-        }
-      }
-    },
-    "连不上 %@:%@:没有到主机的路由,检查地址、网段和网络连接。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Can't reach %@:%@ — no route to host. Check the address, the subnet, and your network connection."
-          }
-        }
-      }
-    },
-    "最近尝试 %@": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Last attempt %@"
           }
         }
       }

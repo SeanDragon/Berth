@@ -79,6 +79,14 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "snippets", title: String(localized: "管理命令片段"), icon: "curlybraces") {
                 openWindow(id: "snippets")
             },
+            PaletteCommand(id: "ai", title: m.isAIPanelVisible ? String(localized: "关闭 AI 助手面板") : String(localized: "打开 AI 助手面板"), subtitle: "⌘⇧A", icon: "sparkles", isEnabled: hasSession) {
+                m.isAIPanelVisible.toggle()
+            },
+            PaletteCommand(id: "ai-selection", title: String(localized: "询问 AI(选中的内容)"), subtitle: "⌘⌥A", icon: "sparkles.rectangle.stack", isEnabled: m.hasTerminalSelection) {
+                if let text = m.selected?.terminalView.getSelection() {
+                    m.askAIAboutSelection(text)
+                }
+            },
         ]
         // 主题切换命令
         for theme in TerminalTheme.builtIn {

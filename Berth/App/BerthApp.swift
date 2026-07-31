@@ -34,6 +34,8 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runReuseIfRequested(container: container)
                     await M2AcceptanceTest.runKeychainProbeIfRequested()
                     await M2AcceptanceTest.runSFTPEditIfRequested()
+                    await M2AcceptanceTest.runAICommandIfRequested(container: container)
+                    await M2AcceptanceTest.runAIChatIfRequested(container: container)
                     await DemoScene.runIfRequested(container: container)
                     // 自动化验收/临时库环境不做会话恢复
                     let env = ProcessInfo.processInfo.environment
@@ -233,6 +235,19 @@ struct TerminalCommands: Commands {
                 }
             }
             .keyboardShortcut("s", modifiers: [.command, .shift])
+
+            Button("AI 助手面板") {
+                SessionManager.shared.isAIPanelVisible.toggle()
+            }
+            .keyboardShortcut("a", modifiers: [.command, .shift])
+
+            Button("询问 AI(选中的内容)") {
+                let manager = SessionManager.shared
+                if let text = manager.selected?.terminalView.getSelection() {
+                    manager.askAIAboutSelection(text)
+                }
+            }
+            .keyboardShortcut("a", modifiers: [.command, .option])
         }
     }
 }

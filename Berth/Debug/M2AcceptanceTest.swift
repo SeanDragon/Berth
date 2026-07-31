@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftTerm
+import SwiftUI
 
 /// M2 自动化验收:BERTH_M2_AUTOTEST=1。凭据走环境变量。
 /// 覆盖:
@@ -422,6 +423,156 @@ enum M2AcceptanceTest {
         await browser.delete(entry)
         log(synced ? "SFTPEDIT_OK downloaded=\(downloaded) synced=\(synced)" : "SFTPEDIT_FAIL 回传未生效")
         browser.close()
+    }
+
+    /// AI 命令执行验收:BERTH_AI_AUTOTEST=1。连目标后走 runAICommand(AI 助手执行命令的通道):
+    /// 验证 stdout/stderr 合并、非零退出码不抛错而是被解析出来、PTY 不受影响。
+    static func runAICommandIfRequested(container: ModelContainer) async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BERTH_AI_AUTOTEST"] == "1",
+              let host = env["BERTH_TEST_HOST"],
+              let user = env["BERTH_TEST_USER"],
+              let dumpBase = env["BERTH_TEST_DUMP"] else { return }
+        func log(_ line: String) {
+            try? line.write(toFile: dumpBase + ".ai.log", atomically: true, encoding: .utf8)
+        }
+        let port = Int(env["BERTH_TEST_PORT"] ?? "22") ?? 22
+        UserDefaults.standard.set(false, forKey: SettingsKeys.requireTouchIDForKeys)
+        var spec = HostSpec(
+            hostID: UUID(), label: "ai-test", hostname: host, port: port,
+            username: user,
+            authMethod: env["BERTH_TEST_KEYFILE"] != nil ? .privateKeyFile : .password,
+            privateKeyPath: env["BERTH_TEST_KEYFILE"]
+        )
+        spec.startupCommands = ""
+        let session = SessionManager.shared.open(spec: spec, transientPassword: env["BERTH_TEST_PASSWORD"])
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if session.hostKeyPrompt != nil { session.resolveHostKeyPrompt(accepted: true) }
+            if case .connected = session.state { break }
+            if case .disconnected(let reason) = session.state { log("AI_FAIL 连接失败 \(reason)"); return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard case .connected = session.state else { log("AI_FAIL 连接超时"); return }
+
+        guard let ok = await session.runAICommand("echo hello-from-ai; uname -s") else {
+            log("AI_FAIL runAICommand 返回 nil(未连接)"); return
+        }
+        // stderr 合并 + 非零退出码
+        guard let failing = await session.runAICommand("echo to-stderr >&2; exit 7") else {
+            log("AI_FAIL 第二条命令返回 nil"); return
+        }
+        let stdoutOK = ok.output.contains("hello-from-ai") && (ok.exitCode ?? -1) == 0
+        let stderrMerged = failing.output.contains("to-stderr")
+        let exitParsed = failing.exitCode == 7
+        // PTY 仍然活着(exec 通道不影响 shell)
+        let ptyAlive: Bool = { if case .connected = session.state { return true }; return false }()
+        let verdict = stdoutOK && stderrMerged && exitParsed && ptyAlive ? "AI_OK" : "AI_FAIL"
+        log("\(verdict) stdout=\(stdoutOK) stderrMerged=\(stderrMerged) exit7=\(exitParsed) ptyAlive=\(ptyAlive) out1=\(ok.output.debugDescription) out2=\(failing.output.debugDescription) code2=\(String(describing: failing.exitCode))")
+    }
+
+    /// AI 对话回路验收:BERTH_AICHAT_AUTOTEST=1 + BERTH_AI_BASEURL 指向一个 mock 网关。
+    /// 走完整回路:提问 → 模型要求 run_command → 在真实 SSH 上执行 → 结果回传 → 拿到最终答复。
+    /// 用本机地址免 Key(与 Ollama/LM Studio 同一条路径)。
+    static func runAIChatIfRequested(container: ModelContainer) async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BERTH_AICHAT_AUTOTEST"] == "1",
+              let host = env["BERTH_TEST_HOST"],
+              let user = env["BERTH_TEST_USER"],
+              let baseURL = env["BERTH_AI_BASEURL"],
+              let dumpBase = env["BERTH_TEST_DUMP"] else { return }
+        func log(_ line: String) {
+            try? line.write(toFile: dumpBase + ".aichat.log", atomically: true, encoding: .utf8)
+        }
+        let defaults = UserDefaults.standard
+        defaults.set(baseURL, forKey: SettingsKeys.aiBaseURL)
+        defaults.set(AISettings.APIFormat.openAI.rawValue, forKey: SettingsKeys.aiAPIFormat)
+        defaults.set("mock-model", forKey: SettingsKeys.aiModel)
+        defaults.set(true, forKey: SettingsKeys.aiAutoRunCommands)
+        defaults.set(false, forKey: SettingsKeys.requireTouchIDForKeys)
+
+        let port = Int(env["BERTH_TEST_PORT"] ?? "22") ?? 22
+        let spec = HostSpec(
+            hostID: UUID(), label: "aichat-test", hostname: host, port: port,
+            username: user, authMethod: .password, privateKeyPath: nil
+        )
+        let session = SessionManager.shared.open(spec: spec, transientPassword: env["BERTH_TEST_PASSWORD"])
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if session.hostKeyPrompt != nil { session.resolveHostKeyPrompt(accepted: true) }
+            if case .connected = session.state { break }
+            if case .disconnected(let reason) = session.state { log("AICHAT_FAIL 连接失败 \(reason)"); return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard case .connected = session.state else { log("AICHAT_FAIL 连接超时"); return }
+
+        let controller = AIChatStore.shared.controller(for: session)
+        controller.send("磁盘还剩多少")
+        let chatDeadline = Date().addingTimeInterval(60)
+        while controller.isBusy, Date() < chatDeadline {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+
+        let assistants = controller.messages.filter { message in
+            if case .assistant = message.role { return true }
+            return false
+        }
+        let toolCalls: [AIToolCall] = assistants.flatMap { $0.toolCalls }
+        let errors: [String] = assistants.compactMap { $0.errorText }
+        let ranCommand = toolCalls.first
+        let finalText = assistants.last?.text ?? ""
+        let ok = !controller.isBusy
+            && errors.isEmpty
+            && ranCommand?.status == .done
+            && (ranCommand?.output.contains("Filesystem") ?? false)
+            && finalText.contains("mock-final")
+        // 「询问 AI」:终端选中的报错走 SessionManager 进面板并自动提问
+        SessionManager.shared.isAIPanelVisible = false
+        let before = controller.messages.count
+        SessionManager.shared.askAIAboutSelection("bash: nginx: command not found")
+        let askOK = SessionManager.shared.isAIPanelVisible
+            && controller.messages.count > before
+            && (controller.messages.last { message in
+                if case .user = message.role { return true }
+                return false
+            }?.text.contains("command not found") ?? false)
+        controller.stop()
+
+        log("\(ok && askOK ? "AICHAT_OK" : "AICHAT_FAIL") turns=\(assistants.count) tools=\(toolCalls.count) cmd=\(ranCommand?.command ?? "-") exit=\(String(describing: ranCommand?.exitCode)) errors=\(errors) askSelection=\(askOK) final=\(finalText.debugDescription) out=\(ranCommand?.output.prefix(80).debugDescription ?? "-")")
+
+        // 顺手出两张截图核对界面:整面板 + 消息流(ScrollView 在 ImageRenderer 下渲不出内容,
+        // 所以消息单独用非 lazy 的 VStack 渲一份,含代码块卡片)
+        ranCommand?.isOutputExpanded = true
+        PanelSnapshot.write(
+            AIChatPanelView(session: session) {},
+            height: 420,
+            to: dumpBase + ".panel.png"
+        )
+        let sample = AIChatMessage(role: .assistant, text: """
+        查看当前磁盘空间可以用:
+
+        ```bash
+        df -h
+        ```
+
+        只看根分区:
+
+        ```bash
+        df -h /
+        ```
+        """)
+        PanelSnapshot.write(
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(controller.messages + [sample]) { message in
+                    AIChatMessageView(message: message, controller: controller, session: session)
+                }
+            }
+            .padding(10)
+            .frame(width: 320)
+            .background(ThemeStore.shared.current.panelBackground),
+            height: 900,
+            to: dumpBase + ".messages.png"
+        )
     }
 
     /// 连接复用验收:BERTH_REUSE_AUTOTEST=1。连目标(拥有者)后,再开一个借用会话复用同一连接,
