@@ -8,7 +8,7 @@ Berth is a Swift-native SSH client for macOS — Metal-rendered terminal, connec
 
 ![Berth terminal](site/public/assets/shots/hero-terminal.png)
 
-macOS 15+ · Apple Silicon & Intel · Developer ID signed & notarized
+macOS 15+ · Universal · Developer ID signed & notarized
 
 **[⬇︎ Download the latest release](https://github.com/xinghelee/Berth/releases/latest)** · [All releases](https://github.com/xinghelee/Berth/releases)
 

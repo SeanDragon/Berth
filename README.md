@@ -8,7 +8,7 @@ Berth 是一款 Swift 原生的 macOS SSH 客户端——Metal 渲染终端、�
 
 ![Berth 终端](site/public/assets/shots/hero-terminal.png)
 
-macOS 15+ · Apple Silicon & Intel · Developer ID 签名与公证
+macOS 15+ · Universal · Developer ID 签名与公证
 
 **[⬇︎ 下载最新版](https://github.com/xinghelee/Berth/releases/latest)** · [全部版本](https://github.com/xinghelee/Berth/releases)
 

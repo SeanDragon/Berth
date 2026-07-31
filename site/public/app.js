@@ -4,11 +4,11 @@ const LANG = (document.documentElement.lang || 'en').toLowerCase().startsWith('z
 
 const T = {
   en: {
-    note: (v) => `v${v} · Apple Silicon & Intel · Developer ID signed & notarized`,
+    note: (v) => `v${v} · Universal · Developer ID signed & notarized`,
     noRelease: 'Release in the works · check back soon',
   },
   zh: {
-    note: (v) => `v${v} · Apple Silicon & Intel · Developer ID 签名与公证`,
+    note: (v) => `v${v} · Universal · Developer ID 签名与公证`,
     noRelease: '正式版打包中 · 敬请期待',
   },
 }[LANG]
