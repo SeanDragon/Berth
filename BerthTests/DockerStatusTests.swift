@@ -83,6 +83,27 @@ final class DockerStatusTests: XCTestCase {
         XCTAssertEqual(status.containers.count, 1)
     }
 
+    // MARK: - 容器管理动作
+
+    func testActionCommands() {
+        XCTAssertEqual(DockerAction.stop.command(containerID: "d29f75bb7021"), "docker stop d29f75bb7021")
+        XCTAssertEqual(DockerAction.start.command(containerID: "web-1"), "docker start web-1")
+        XCTAssertEqual(DockerAction.restart.command(containerID: "a.b_c-d"), "docker restart a.b_c-d")
+        XCTAssertEqual(
+            DockerAction.logsCommand(containerID: "d29f75bb7021"),
+            "docker logs --tail 200 d29f75bb7021 2>&1"
+        )
+    }
+
+    /// ID 只可能来自 docker 输出,但仍做白名单过滤兜底 —— 任何 shell 元字符必须被剥掉
+    func testActionCommandSanitizesInjection() {
+        XCTAssertEqual(
+            DockerAction.stop.command(containerID: "abc; rm -rf /"),
+            "docker stop abcrm-rf"
+        )
+        XCTAssertEqual(DockerAction.sanitized("$(reboot)|&`x`"), "rebootx")
+    }
+
     /// 集成:在本机跑真实采集脚本(与远端 exec 执行的是同一段),解析结果必须自洽。
     /// 本机装了 docker 走 available 路径,没装走 notInstalled —— 两者都算通过。
     func testCollectionScriptRunsForReal() throws {

@@ -75,6 +75,33 @@ struct DockerStatus: Equatable {
     }
 }
 
+/// 容器管理动作(二期:启动/停止/重启;删除属危险操作,刻意不做)
+enum DockerAction: String, CaseIterable {
+    case start, stop, restart
+
+    /// 展示用动词
+    var label: String {
+        switch self {
+        case .start: return String(localized: "启动")
+        case .stop: return String(localized: "停止")
+        case .restart: return String(localized: "重启")
+        }
+    }
+
+    /// 容器 ID 白名单过滤(docker 的 ID/名称字符集),防注入
+    static func sanitized(_ id: String) -> String {
+        id.filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." || $0 == "-" }
+    }
+
+    func command(containerID: String) -> String {
+        "docker \(rawValue) \(Self.sanitized(containerID))"
+    }
+
+    static func logsCommand(containerID: String, tail: Int = 200) -> String {
+        "docker logs --tail \(tail) \(sanitized(containerID)) 2>&1"
+    }
+}
+
 struct DockerContainer: Equatable, Identifiable {
     var id = ""
     var name = ""

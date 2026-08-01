@@ -8,6 +8,20 @@ struct DockerPanelView: View {
 
     @State private var status: DockerStatus?
     @State private var isLoading = false
+    /// 正在执行动作的容器(卡片转圈 + 菜单禁用)
+    @State private var busyContainerID: String?
+    /// 最近一次动作失败的说明(顶部红字,下次动作/刷新清掉)
+    @State private var actionError: String?
+    /// 生产主机的动作待确认
+    @State private var pendingAction: PendingDockerAction?
+    /// 日志 sheet 的目标容器
+    @State private var logsTarget: DockerContainer?
+
+    struct PendingDockerAction: Identifiable {
+        let id = UUID()
+        let action: DockerAction
+        let container: DockerContainer
+    }
 
     private var theme: TerminalTheme { ThemeStore.shared.current }
 
@@ -30,6 +44,24 @@ struct DockerPanelView: View {
         }
         .frame(width: 290)
         .background(theme.panelBackground)
+        .sheet(item: $logsTarget) { container in
+            DockerLogsSheet(container: container, session: session)
+        }
+        .confirmationDialog(
+            "生产主机操作确认",
+            isPresented: Binding(
+                get: { pendingAction != nil },
+                set: { if !$0 { pendingAction = nil } }
+            ),
+            presenting: pendingAction
+        ) { pending in
+            Button("\(pending.action.label)「\(pending.container.name)」", role: .destructive) {
+                execute(pending.action, on: pending.container)
+            }
+            Button("取消", role: .cancel) {}
+        } message: { pending in
+            Text("这台主机标记为生产环境,确认要\(pending.action.label)容器「\(pending.container.name)」?")
+        }
         .task(id: session.id) {
             await refresh()
             // 面板打开期间低频跟进,静默刷新不闪加载态
@@ -59,6 +91,12 @@ struct DockerPanelView: View {
                     placeholder(icon: "bolt.slash", text: String(localized: "Docker 守护进程不可达:\(message)"))
                 case .available:
                     summaryRow(status)
+                    if let actionError {
+                        Label(actionError, systemImage: "exclamationmark.triangle")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     if status.containers.isEmpty {
                         Text("没有容器。")
                             .font(.caption)
@@ -106,7 +144,7 @@ struct DockerPanelView: View {
         .padding(.bottom, 2)
     }
 
-    /// 单个容器的卡片:圆角底色分块,名称/镜像/状态/端口
+    /// 单个容器的卡片:圆角底色分块,名称/镜像/状态/端口 + 动作菜单
     private func containerCard(_ container: DockerContainer) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 6) {
@@ -123,6 +161,21 @@ struct DockerPanelView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .layoutPriority(-1)
+                if busyContainerID == container.id {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Menu {
+                        actionButtons(container)
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .fixedSize()
+                    .disabled(busyContainerID != nil)
+                }
             }
             Text(container.image)
                 .font(.caption2)
@@ -146,6 +199,47 @@ struct DockerPanelView: View {
                 .fill(theme.elevatedBackground)
                 .overlay(RoundedRectangle(cornerRadius: 7).stroke(theme.borderColor, lineWidth: 1))
         )
+        .contextMenu { actionButtons(container) }
+    }
+
+    @ViewBuilder
+    private func actionButtons(_ container: DockerContainer) -> some View {
+        if container.isRunning {
+            Button("停止") { perform(.stop, on: container) }
+            Button("重启") { perform(.restart, on: container) }
+        } else {
+            Button("启动") { perform(.start, on: container) }
+        }
+        Divider()
+        Button("查看日志") { logsTarget = container }
+    }
+
+    // MARK: - 动作执行
+
+    /// 生产主机先确认,其余直接执行(动作从菜单点选,已是明确意图)
+    private func perform(_ action: DockerAction, on container: DockerContainer) {
+        if session.spec.isProduction {
+            pendingAction = PendingDockerAction(action: action, container: container)
+        } else {
+            execute(action, on: container)
+        }
+    }
+
+    private func execute(_ action: DockerAction, on container: DockerContainer) {
+        busyContainerID = container.id
+        actionError = nil
+        Task {
+            let outcome = await session.runAICommand(action.command(containerID: container.id))
+            if let outcome, let code = outcome.exitCode, code != 0 {
+                let detail = outcome.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                actionError = String(localized: "\(action.label)「\(container.name)」失败:\(String(detail.suffix(160)))")
+            } else if outcome == nil {
+                actionError = String(localized: "会话未连接,无法执行。")
+            }
+            // docker stop 默认有 10s 宽限期,动作返回后立即刷新拿到最新状态
+            if let fresh = await session.fetchDockerStatus() { status = fresh }
+            busyContainerID = nil
+        }
     }
 
     private func placeholder(icon: String, text: String) -> some View {
@@ -181,6 +275,62 @@ struct DockerPanelView: View {
         let fetched = await session.fetchDockerStatus()
         guard !Task.isCancelled else { return }
         status = fetched
+        isLoading = false
+    }
+}
+
+/// 容器日志(docker logs --tail 200,stderr 合并):等宽只读,可刷新可复制
+struct DockerLogsSheet: View {
+    let container: DockerContainer
+    let session: TerminalSession
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var text = ""
+    @State private var isLoading = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("日志 · \(container.name)")
+                    .font(.system(size: 13, weight: .semibold))
+                if isLoading { ProgressView().controlSize(.small) }
+                Spacer()
+                Button {
+                    Task { await load() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.plain)
+                .help(String(localized: "刷新"))
+                Button("完成") { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            Divider()
+            ScrollViewReader { proxy in
+                ScrollView {
+                    Text(text.isEmpty && !isLoading ? String(localized: "(没有日志输出)") : text)
+                        .font(.system(size: 11, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .id("logs-end")
+                }
+                .onChange(of: text) { _, _ in
+                    proxy.scrollTo("logs-end", anchor: .bottom)
+                }
+            }
+        }
+        .frame(width: 600, height: 420)
+        .task { await load() }
+    }
+
+    private func load() async {
+        isLoading = true
+        let outcome = await session.runAICommand(DockerAction.logsCommand(containerID: container.id))
+        text = outcome?.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? String(localized: "会话未连接,无法执行。")
         isLoading = false
     }
 }

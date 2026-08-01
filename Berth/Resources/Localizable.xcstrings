@@ -85,6 +85,26 @@
       },
       "shouldTranslate": false
     },
+    "%@「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ “%@”"
+          }
+        }
+      }
+    },
+    "%@「%@」失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ “%@” failed: %@"
+          }
+        }
+      }
+    },
     "%lld": {
       "localizations": {
         "en": {
@@ -195,6 +215,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "(cannot preview: binary or too large)"
+          }
+        }
+      }
+    },
+    "(没有日志输出)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(no log output)"
           }
         }
       }
@@ -1542,6 +1572,16 @@
         }
       }
     },
+    "会话未连接,无法执行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session not connected — cannot run."
+          }
+        }
+      }
+    },
     "会话未连接,无法执行命令。": {
       "localizations": {
         "en": {
@@ -2349,6 +2389,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notify on long-task completion / bell in background"
+          }
+        }
+      }
+    },
+    "启动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start"
           }
         }
       }
@@ -3994,6 +4044,16 @@
         }
       }
     },
+    "日志 · %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs · %@"
+          }
+        }
+      }
+    },
     "显示 %lld / %lld 个主机": {
       "localizations": {
         "en": {
@@ -4374,6 +4434,16 @@
         }
       }
     },
+    "查看日志": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View logs"
+          }
+        }
+      }
+    },
     "标签色": {
       "localizations": {
         "en": {
@@ -4740,6 +4810,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Xuan PRO (Light)"
+          }
+        }
+      }
+    },
+    "生产主机操作确认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Production host confirmation"
           }
         }
       }
@@ -6084,6 +6164,16 @@
         }
       }
     },
+    "这台主机标记为生产环境,确认要%@容器「%@」?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This host is marked as production — really %@ the container “%@”?"
+          }
+        }
+      }
+    },
     "这台主机没有安装 Docker。": {
       "localizations": {
         "en": {
@@ -6450,6 +6540,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "General"
+          }
+        }
+      }
+    },
+    "重启": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restart"
           }
         }
       }
