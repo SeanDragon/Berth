@@ -31,4 +31,8 @@ enum SettingsKeys {
     static let aiAutoRunCommands = "ai.autoRunCommands"
     /// AI 助手:请求格式(anthropic / openAI 兼容)
     static let aiAPIFormat = "ai.apiFormat"
+    /// 自动检查更新(GitHub Releases API,默认开)
+    static let autoCheckUpdates = "app.autoCheckUpdates"
+    /// 用户选择跳过的版本号(该版本不再提示,新版本会重新提示)
+    static let skippedUpdateVersion = "app.skippedUpdateVersion"
 }

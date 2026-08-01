@@ -225,6 +225,15 @@ struct SidebarView: View {
 
             Spacer()
 
+            if let update = UpdateChecker.shared.available {
+                PanelIconButton(
+                    symbol: "arrow.up.circle.fill",
+                    help: String(localized: "新版本 \(update.version) 可用 —— 点击查看"),
+                    tint: ThemeStore.shared.current.accentColor
+                ) {
+                    UpdateChecker.shared.openReleasePage(update)
+                }
+            }
             PanelIconButton(symbol: "paintpalette", help: String(localized: "终端配色")) { isThemePanelPresented.toggle() }
                 .popover(isPresented: $isThemePanelPresented, arrowEdge: .top) {
                     ThemePanelView()

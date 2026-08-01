@@ -38,9 +38,10 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runAICommandIfRequested(container: container)
                     await M2AcceptanceTest.runAIChatIfRequested(container: container)
                     await DemoScene.runIfRequested(container: container)
-                    // 自动化验收/临时库环境不做会话恢复
+                    // 自动化验收/临时库环境不做会话恢复,也不发检查更新请求
                     let env = ProcessInfo.processInfo.environment
                     if !env.keys.contains(where: { $0.hasPrefix("BERTH_") }) {
+                        UpdateChecker.shared.startAutomaticChecks()
                         await SessionManager.shared.restoreSessions(container: container)
                     }
                 }

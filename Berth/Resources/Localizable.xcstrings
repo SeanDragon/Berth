@@ -2733,6 +2733,16 @@
         }
       }
     },
+    "复制 brew 升级命令": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy brew upgrade command"
+          }
+        }
+      }
+    },
     "复制 ssh 命令": {
       "localizations": {
         "en": {
@@ -3333,6 +3343,16 @@
         }
       }
     },
+    "已是最新版本。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You're on the latest version."
+          }
+        }
+      }
+    },
     "已清除 API Key": {
       "localizations": {
         "en": {
@@ -3589,6 +3609,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "SFTP open timed out: the server may not have the SFTP subsystem enabled or has hit its session limit. Click refresh to retry."
+          }
+        }
+      }
+    },
+    "打开下载页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open download page"
           }
         }
       }
@@ -3893,6 +3923,26 @@
         }
       }
     },
+    "新版本 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New version %@"
+          }
+        }
+      }
+    },
+    "新版本 %@ 可用 —— 点击查看": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version %@ is available — click to view"
+          }
+        }
+      }
+    },
     "方块": {
       "localizations": {
         "en": {
@@ -4150,6 +4200,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No forwards. Tap + to add an ad-hoc one (not saved)."
+          }
+        }
+      }
+    },
+    "更新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updates"
           }
         }
       }
@@ -4510,6 +4570,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Checking…"
+          }
+        }
+      }
+    },
+    "检查失败,稍后再试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check failed — try again later."
+          }
+        }
+      }
+    },
+    "检查失败:网络不可用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check failed: network unavailable."
+          }
+        }
+      }
+    },
+    "检查更新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for Updates"
           }
         }
       }
@@ -5564,6 +5654,16 @@
         }
       }
     },
+    "自动检查更新": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Check for updates automatically"
+          }
+        }
+      }
+    },
     "自动重连中(第 %lld 次)": {
       "localizations": {
         "en": {
@@ -6000,6 +6100,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skip existing files"
+          }
+        }
+      }
+    },
+    "跳过此版本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip this version"
           }
         }
       }

@@ -24,6 +24,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.aiBaseURL) private var aiBaseURL = ""
     @AppStorage(SettingsKeys.aiAutoRunCommands) private var aiAutoRun = false
     @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
+    @AppStorage(SettingsKeys.autoCheckUpdates) private var autoCheckUpdates = true
     @State private var aiProviderID = AIProvider.all[0].id
     @State private var aiModelIsCustom = false
     @State private var tab: SettingsTab = .terminal
@@ -333,10 +334,48 @@ struct SettingsView: View {
                 if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
                     LabeledContent("版本", value: version)
                 }
+                Toggle("自动检查更新", isOn: $autoCheckUpdates)
+                updateRow
                 LabeledContent("第三方开源库") {
                     Button("查看协议…") { showAcknowledgements = true }
                 }
             }
+    }
+
+    /// 更新行:发现新版给「获取/跳过」,否则给手动检查按钮与结果
+    @ViewBuilder
+    private var updateRow: some View {
+        let checker = UpdateChecker.shared
+        if let update = checker.available {
+            LabeledContent(String(localized: "新版本 \(update.version)")) {
+                HStack(spacing: 8) {
+                    if UpdateChecker.installedViaHomebrew {
+                        Button("复制 brew 升级命令") {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(UpdateChecker.brewUpgradeCommand, forType: .string)
+                        }
+                        .help(UpdateChecker.brewUpgradeCommand)
+                    }
+                    Button("打开下载页") { checker.openReleasePage(update) }
+                    Button("跳过此版本") { checker.skip(update) }
+                }
+            }
+        } else {
+            LabeledContent("更新") {
+                HStack(spacing: 8) {
+                    if let result = checker.manualResult {
+                        Text(result).foregroundStyle(.secondary)
+                    }
+                    if checker.isChecking {
+                        ProgressView().controlSize(.small)
+                    }
+                    Button("检查更新") {
+                        Task { await UpdateChecker.shared.check(manual: true) }
+                    }
+                    .disabled(checker.isChecking)
+                }
+            }
+        }
     }
 
     private var syncStatusLabel: String {
