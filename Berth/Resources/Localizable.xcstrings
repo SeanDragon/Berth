@@ -444,6 +444,26 @@
         }
       }
     },
+    "Docker · %lld/%lld 运行中": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker · %lld/%lld running"
+          }
+        }
+      }
+    },
+    "Docker 守护进程不可达:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker daemon unreachable: %@"
+          }
+        }
+      }
+    },
     "GitHub Light(浅色)": {
       "localizations": {
         "en": {
@@ -3854,6 +3874,16 @@
         }
       }
     },
+    "无权访问 Docker:当前用户可能不在 docker 组。在服务器上执行 `sudo usermod -aG docker $USER` 后重新登录即可。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No access to Docker — the current user is likely not in the docker group. Run `sudo usermod -aG docker $USER` on the server, then log in again."
+          }
+        }
+      }
+    },
     "无权限绑定该端口(<1024 需特权)": {
       "localizations": {
         "en": {
@@ -4560,6 +4590,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No matching hosts"
+          }
+        }
+      }
+    },
+    "没有容器。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No containers."
           }
         }
       }

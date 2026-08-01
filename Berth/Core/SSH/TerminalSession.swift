@@ -475,6 +475,21 @@ final class TerminalSession: Identifiable {
         }
     }
 
+    /// inspector 用:远端 Docker 状态(容器列表/不可用原因)。脚本保证 exit 0。
+    func fetchDockerStatus() async -> DockerStatus? {
+        guard let client else { return nil }
+        do {
+            let buffer = try await client.executeCommand(
+                "sh -c \(Self.shellQuote(DockerStatus.collectionScript))",
+                maxResponseSize: 1 << 20,
+                mergeStreams: true
+            )
+            return DockerStatus(parsing: String(buffer: buffer))
+        } catch {
+            return nil
+        }
+    }
+
     nonisolated private static func shellQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }

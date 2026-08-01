@@ -6,6 +6,7 @@ struct ServerInfoInspector: View {
     let onClose: () -> Void
 
     @State private var info: ServerInfo?
+    @State private var docker: DockerStatus?
     @State private var isLoading = false
     @State private var now = Date()
     @State private var highlightState: HighlightUIState = .idle
@@ -31,6 +32,7 @@ struct ServerInfoInspector: View {
                     if !session.spec.hostname.isEmpty {
                         serverSection
                     }
+                    dockerSection
                     highlightSection
                 }
                 .padding(14)
@@ -191,6 +193,95 @@ struct ServerInfoInspector: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Docker 分区:没装 docker 的主机整段不显示;装了但访问失败给出人话原因
+    @ViewBuilder
+    private var dockerSection: some View {
+        if let docker {
+            switch docker.availability {
+            case .notInstalled:
+                EmptyView()
+            case .permissionDenied:
+                section("Docker") {
+                    Text("无权访问 Docker:当前用户可能不在 docker 组。在服务器上执行 `sudo usermod -aG docker $USER` 后重新登录即可。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            case .daemonUnreachable(let message):
+                section("Docker") {
+                    Text("Docker 守护进程不可达:\(message)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            case .available:
+                section(String(localized: "Docker · \(docker.runningCount)/\(docker.containers.count) 运行中")) {
+                    if docker.containers.isEmpty {
+                        Text("没有容器。")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    } else {
+                        ForEach(docker.grouped, id: \.project) { group in
+                            if !group.project.isEmpty {
+                                Label(group.project, systemImage: "square.stack.3d.up")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .padding(.top, 2)
+                            }
+                            ForEach(group.containers) { container in
+                                dockerRow(container)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func dockerRow(_ container: DockerContainer) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Circle()
+                .fill(dockerStateColor(container.state))
+                .frame(width: 7, height: 7)
+                .padding(.top, 4)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(container.name)
+                    .font(.caption)
+                    .textSelection(.enabled)
+                Text(container.image)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                HStack(spacing: 6) {
+                    Text(container.status)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                    if !container.displayPorts.isEmpty {
+                        Text(container.displayPorts)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func dockerStateColor(_ state: String) -> Color {
+        switch state {
+        case "running": return .green
+        case "paused", "restarting", "removing": return .yellow
+        case "dead": return .red
+        default: return .gray // exited / created
         }
     }
 
@@ -405,15 +496,20 @@ struct ServerInfoInspector: View {
     private func refresh() async {
         guard case .connected = session.state else {
             info = nil
+            docker = nil
             return
         }
         // 切标签时先清空,避免网络往返期间展示上一台主机的数据
         info = nil
+        docker = nil
         isLoading = true
-        let fetched = await session.fetchServerInfo()
+        async let infoFetch = session.fetchServerInfo()
+        async let dockerFetch = session.fetchDockerStatus()
+        let (fetchedInfo, fetchedDocker) = await (infoFetch, dockerFetch)
         // .task(id:) 切换会取消旧任务;若 fetch 不响应取消而迟到返回,不能把旧主机数据写到新标签上
         guard !Task.isCancelled else { return }
-        info = fetched
+        info = fetchedInfo
+        docker = fetchedDocker
         isLoading = false
     }
 }
