@@ -625,7 +625,7 @@
         }
       }
     },
-	"PKCS#8 封装的 Ed25519": {
+    "PKCS#8 封装的 Ed25519": {
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3934,6 +3934,16 @@
         }
       }
     },
+    "暂不支持 %@ 密钥。Berth 支持 OpenSSH 格式的 ed25519,以及 OpenSSH / PKCS#1 / PKCS#8 格式的 RSA。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ keys aren't supported yet. Berth supports ed25519 in OpenSSH format, and RSA in OpenSSH / PKCS#1 / PKCS#8 format."
+          }
+        }
+      }
+    },
     "暂无转发。点右上「+」临时加一条(不落库)。": {
       "localizations": {
         "en": {
@@ -5850,6 +5860,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "No triggers yet"
+          }
+        }
+      }
+    },
+    "这把私钥有 passphrase,请在下方一并填写。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This private key has a passphrase — enter it below as well."
+          }
+        }
+      }
+    },
+    "这是公钥(.pub),不能用于认证。请改用对应的私钥文件(去掉 .pub 后缀的那个)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is a public key (.pub) and can't be used for authentication. Use the matching private key file instead (the one without the .pub suffix)."
+          }
+        }
+      }
+    },
+    "这是加密的 PKCS#8 私钥,暂不支持直接导入。请先用 `ssh-keygen -p -f <文件>` 转成 OpenSSH 格式再导入。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is an encrypted PKCS#8 private key, which can't be imported directly yet. Convert it to OpenSSH format first with `ssh-keygen -p -f <file>`, then import."
           }
         }
       }

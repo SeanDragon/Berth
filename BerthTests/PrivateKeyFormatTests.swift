@@ -118,6 +118,21 @@ final class PrivateKeyFormatTests: XCTestCase {
         }
     }
 
+    /// DEK-Info 的 IV 短于块长时必须拒收 —— CCCrypt 会按块长读 IV,短 IV 是越界读
+    func testRejectsTruncatedDEKInfoIV() {
+        let pem = """
+        -----BEGIN RSA PRIVATE KEY-----
+        Proc-Type: 4,ENCRYPTED
+        DEK-Info: AES-128-CBC,0102
+
+        AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+        -----END RSA PRIVATE KEY-----
+        """
+        XCTAssertThrowsError(try PrivateKeyFormat.normalized(pem, passphrase: "x")) { error in
+            XCTAssertEqual(error as? PrivateKeyFormat.ConversionError, .unsupportedPEMCipher("AES-128-CBC"))
+        }
+    }
+
     // MARK: - 辅助
 
     /// 从 OpenSSH 格式文本解出 RSA 私钥,回写公钥 blob(e‖n)用于和 .pub 比对
@@ -167,11 +182,5 @@ final class PrivateKeyFormatTests: XCTestCase {
             let typeLength = Int(blob.prefix(4).reduce(UInt32(0)) { $0 << 8 | UInt32($1) })
             publicBlob = blob.dropFirst(4 + typeLength)
         }
-    }
-}
-
-extension PrivateKeyFormat.ConversionError: Equatable {
-    public static func == (lhs: Self, rhs: Self) -> Bool {
-        String(describing: lhs) == String(describing: rhs)
     }
 }

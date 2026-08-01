@@ -25,7 +25,7 @@ enum PrivateKeyFormat {
         let converted: Bool
     }
 
-    enum ConversionError: LocalizedError {
+    enum ConversionError: LocalizedError, Equatable {
         case notAPrivateKey
         case publicKeyGiven
         case unsupportedAlgorithm(String)
@@ -295,13 +295,16 @@ enum PrivateKeyFormat {
 
         let algorithm: CCAlgorithm
         let keyLength: Int
+        let blockSize: Int
         switch cipherName {
-        case "AES-128-CBC": algorithm = CCAlgorithm(kCCAlgorithmAES); keyLength = 16
-        case "AES-192-CBC": algorithm = CCAlgorithm(kCCAlgorithmAES); keyLength = 24
-        case "AES-256-CBC": algorithm = CCAlgorithm(kCCAlgorithmAES); keyLength = 32
-        case "DES-EDE3-CBC": algorithm = CCAlgorithm(kCCAlgorithm3DES); keyLength = 24
+        case "AES-128-CBC": algorithm = CCAlgorithm(kCCAlgorithmAES); keyLength = 16; blockSize = kCCBlockSizeAES128
+        case "AES-192-CBC": algorithm = CCAlgorithm(kCCAlgorithmAES); keyLength = 24; blockSize = kCCBlockSizeAES128
+        case "AES-256-CBC": algorithm = CCAlgorithm(kCCAlgorithmAES); keyLength = 32; blockSize = kCCBlockSizeAES128
+        case "DES-EDE3-CBC": algorithm = CCAlgorithm(kCCAlgorithm3DES); keyLength = 24; blockSize = kCCBlockSize3DES
         default: throw ConversionError.unsupportedPEMCipher(cipherName)
         }
+        // CCCrypt 会按块长从 IV 指针读满一块,短 IV 会越界读
+        guard iv.count == blockSize else { throw ConversionError.unsupportedPEMCipher(cipherName) }
 
         // OpenSSL 的 EVP_BytesToKey:MD5,1 轮,盐取 IV 前 8 字节
         let salt = Array(iv.prefix(8))
