@@ -1002,11 +1002,16 @@ final class TerminalSession: Identifiable {
     }
 
     private static func keyAuthentication(username: String, keyText: String, passphrase: String?) throws -> SSHAuthenticationMethod {
-        let decryptionKey = passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
-        if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: keyText, decryptionKey: decryptionKey) {
+        // 磁盘上的私钥文件常是老式 PKCS#1/PKCS#8 PEM(~/.ssh/id_rsa、云厂商 .pem),
+        // 先归一化成 OpenSSH 容器再交给 Citadel。文件本身不动。
+        let normalized = try PrivateKeyFormat.normalized(keyText, passphrase: passphrase)
+        let decryptionKey = normalized.passphraseConsumed
+            ? nil
+            : passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
+        if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text, decryptionKey: decryptionKey) {
             return .ed25519(username: username, privateKey: key)
         }
-        if let key = try? Insecure.RSA.PrivateKey(sshRsa: keyText, decryptionKey: decryptionKey) {
+        if let key = try? Insecure.RSA.PrivateKey(sshRsa: normalized.text, decryptionKey: decryptionKey) {
             return .rsa(username: username, privateKey: key)
         }
         throw SessionError.unsupportedKey

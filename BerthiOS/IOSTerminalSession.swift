@@ -339,11 +339,15 @@ final class IOSTerminalSession {
                 return .ed25519(username: hop.username, privateKey: key)
             }
             let passphrase = try KeychainStore.read(account: KeychainStore.keyPassphraseAccount(for: keyID))
-            let decryptionKey = passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
-            if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: material, decryptionKey: decryptionKey) {
+            // 同步过来的密钥可能是在 Mac 上以老式 PEM 存入的,统一先归一化
+            let normalized = try PrivateKeyFormat.normalized(material, passphrase: passphrase)
+            let decryptionKey = normalized.passphraseConsumed
+                ? nil
+                : passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
+            if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text, decryptionKey: decryptionKey) {
                 return .ed25519(username: hop.username, privateKey: key)
             }
-            if let key = try? Insecure.RSA.PrivateKey(sshRsa: material, decryptionKey: decryptionKey) {
+            if let key = try? Insecure.RSA.PrivateKey(sshRsa: normalized.text, decryptionKey: decryptionKey) {
                 return .rsa(username: hop.username, privateKey: key)
             }
             throw IOSSessionError.unsupportedKey
