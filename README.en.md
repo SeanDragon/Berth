@@ -14,15 +14,17 @@ macOS 15+ · Universal · Developer ID signed & notarized
 
 ## Features
 
-**AI assistant that operates the server.** ⌘⇧A opens a chat panel — ask "how much disk is left?" and the AI runs commands on the current SSH session, reads the output, and answers, with per-command approval by default. Select an error in the terminal and press ⌘⌥A to ask about it. 22 providers work out of the box: Anthropic, OpenAI, DeepSeek, Kimi, Zhipu, Qwen, Gemini, Grok and more, aggregators like OpenRouter and Together, plus local models via Ollama and LM Studio (no key needed). The API key lives in the Keychain only.
+**AI assistant that operates the server.** ⌘⇧A opens a chat panel — ask "how much disk is left?" and the AI runs commands on the current SSH session, reads the output, and answers, with per-command approval by default. The AI knows which directory your terminal is in: exact with shell integration enabled, and zero-config probing when it isn't — "check the logs in this directory" just works. Select an error in the terminal and press ⌘⌥A to ask about it. 22 providers work out of the box: Anthropic, OpenAI, DeepSeek, Kimi, Zhipu, Qwen, Gemini, Grok and more, aggregators like OpenRouter and Together, plus local models via Ollama and LM Studio (no key needed). The API key lives in the Keychain only.
 
 **Connection reuse & infinite splits.** ⌘T tabs and ⌘D splits share one SSH channel — no second handshake. Nest splits without limit; `exit` collapses the pane.
 
 **Jump hosts & port forwarding.** Chain jump hosts end to end. Local, remote and dynamic SOCKS5 forwarding, plus outbound HTTP/SOCKS5 proxies and ssh-agent support.
 
-**Keys & Touch ID.** Generate or import keys; Touch ID guards every private-key use. `known_hosts` pinning with loud alerts on fingerprint changes.
+**Keys & Touch ID.** Generate or import keys; Touch ID guards every private-key use. Legacy private keys (PKCS#1 / PKCS#8, including cloud-issued `.pem` files) import as-is with automatic conversion — no `ssh-keygen -p` detour. `known_hosts` pinning with loud alerts on fingerprint changes.
 
-**SFTP file panel.** Rides the session connection. Drag-and-drop transfers, edit remote files in your local editor with automatic write-back, chmod, bookmarks, previews.
+**SFTP file panel.** Rides the session connection. Drag-and-drop transfers, edit remote files in your local editor with automatic write-back, chmod, bookmarks, previews. Drop a file straight onto the terminal and it uploads to the shell's current directory — the destination shows before you let go.
+
+**Docker panel.** Remote containers at a glance: compose-project grouping, state dots, port mappings, live-refreshing while open. Start / stop / restart and view logs; actions on production-flagged hosts ask first.
 
 **Calm about disconnects.** Auto-reconnect with exponential backoff, straight back to your working directory (OSC 7). Exit codes marked inline (OSC 133).
 
@@ -66,7 +68,7 @@ xcodebuild -project Berth.xcodeproj -scheme BerthiOS build \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' # iOS app
 ```
 
-Run the unit tests (parsers, Keychain, known_hosts — 35 cases):
+Run the unit tests (parsers, Keychain, known_hosts, key-format conversion, Docker status — 113 cases):
 
 ```bash
 xcodebuild -project Berth.xcodeproj -scheme Berth test

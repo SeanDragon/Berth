@@ -14,15 +14,17 @@ macOS 15+ · Universal · Developer ID 签名与公证
 
 ## 功能
 
-**AI 助手,直接操作服务器。** ⌘⇧A 打开对话面板,说一句「看看磁盘还剩多少」,AI 在当前 SSH 会话上执行命令、读输出、给结论——命令默认逐条确认。终端里选中报错按 ⌘⌥A 直接问 AI。开箱内置 22 家供应商:Anthropic、OpenAI、DeepSeek、Kimi、智谱、通义、Gemini、Grok 等官方厂商,OpenRouter、Together 等聚合中转,以及 Ollama、LM Studio 本地模型(免 Key)。API Key 只进 Keychain。
+**AI 助手,直接操作服务器。** ⌘⇧A 打开对话面板,说一句「看看磁盘还剩多少」,AI 在当前 SSH 会话上执行命令、读输出、给结论——命令默认逐条确认。AI 知道你终端所在的目录:启用命令集成精确感知,未启用也能零配置自动探测,「看看这个目录下的日志」直接就能干活。终端里选中报错按 ⌘⌥A 直接问 AI。开箱内置 22 家供应商:Anthropic、OpenAI、DeepSeek、Kimi、智谱、通义、Gemini、Grok 等官方厂商,OpenRouter、Together 等聚合中转,以及 Ollama、LM Studio 本地模型(免 Key)。API Key 只进 Keychain。
 
 **连接复用与无限分屏。** ⌘T 新标签、⌘D 分屏共享同一条 SSH 通道,不再重新握手。分屏可无限嵌套,`exit` 即收起。
 
 **跳板机与端口转发。** 链式跳板一路到底;本地 / 远程 / 动态 SOCKS5 转发,支持 HTTP 与 SOCKS5 出站代理和 ssh-agent。
 
-**密钥与 Touch ID。** 生成、导入密钥,使用私钥前 Touch ID 验证。`known_hosts` 指纹确认,变更即警告。
+**密钥与 Touch ID。** 生成、导入密钥,使用私钥前 Touch ID 验证。老格式私钥(PKCS#1 / PKCS#8,含云厂商下发的 `.pem`)直接粘贴即用,自动转换,无需 `ssh-keygen -p`。`known_hosts` 指纹确认,变更即警告。
 
-**SFTP 文件面板。** 复用会话连接,拖拽上传下载。远端文件用本地编辑器打开,保存自动回传;chmod、书签、文本预览。
+**SFTP 文件面板。** 复用会话连接,拖拽上传下载。文件直接拖进终端窗口,自动上传到 shell 当前所在目录——松手前就能看到会传到哪。远端文件用本地编辑器打开,保存自动回传;chmod、书签、文本预览。
+
+**Docker 面板。** 一眼看清远端容器:compose 项目分组、状态色点、端口映射,打开期间自动跟进变化。启动 / 停止 / 重启、查看日志;生产主机的操作先过确认。
 
 **断线不慌。** 指数退避自动重连,重连后回到原工作目录(OSC 7);命令退出码直接标在终端里(OSC 133)。
 
@@ -66,7 +68,7 @@ xcodebuild -project Berth.xcodeproj -scheme BerthiOS build \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' # iOS 应用
 ```
 
-运行单元测试(解析器、Keychain、known_hosts,共 35 项):
+运行单元测试(解析器、Keychain、known_hosts、密钥格式转换、Docker 状态等,共 113 项):
 
 ```bash
 xcodebuild -project Berth.xcodeproj -scheme Berth test
