@@ -88,6 +88,10 @@ docker rm -f berth-test-sshd   # 停止
 - **[Citadel](https://github.com/orlandos-nl/Citadel)** SSH 库,vendor 在 `vendor/` 并打补丁——核心是 `rsa-sha2-512` 签名(RFC 8332),让 RSA 密钥能连 OpenSSH 8.8+;详见 `vendor/PATCHES.md`
 - **XcodeGen** 生成工程;以公证 DMG 分发
 
+## 许可证
+
+本项目以 [GPL-3.0](LICENSE) 许可证开源。vendor 依赖各自保留原许可证(Citadel/SwiftTerm 为 MIT,swift-nio-ssh 为 Apache-2.0)。
+
 ---
 
 *Berth · 系好每一条连接*

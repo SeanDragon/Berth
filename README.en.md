@@ -88,6 +88,10 @@ docker rm -f berth-test-sshd   # tear down
 - **[Citadel](https://github.com/orlandos-nl/Citadel)** for SSH, vendored in `vendor/` with patches — notably `rsa-sha2-512` signatures (RFC 8332) so RSA keys work against OpenSSH 8.8+; see `vendor/PATCHES.md`
 - **XcodeGen** project generation; distribution as a notarized DMG
 
+## License
+
+Berth is open source under the [GPL-3.0](LICENSE) license. Vendored dependencies keep their original licenses (MIT for Citadel/SwiftTerm, Apache-2.0 for swift-nio-ssh).
+
 ---
 
 *Berth — moor every connection.*
