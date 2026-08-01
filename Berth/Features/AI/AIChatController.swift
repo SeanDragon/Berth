@@ -66,6 +66,16 @@ final class AIChatController {
     /// 回传给模型的单条命令输出上限(超出截断中段)
     private static let maxToolOutputChars = 12000
 
+    /// 终端当前目录的来源与可信度,三层递进:OSC 7 上报(精确)→ 连接内进程探测
+    /// (零配置兜底,可能多候选)→ 未知(提示词里如实说明并让 AI 引导启用命令集成)。
+    /// 给模型的信息必须与来源的真实可信度一致 —— 探测值标注"推断",多候选如实列出。
+    private enum WorkingDirectoryContext {
+        case reported(String)
+        case probed([String])
+        case unknown
+    }
+    @ObservationIgnored private var cwdContext: WorkingDirectoryContext = .unknown
+
     init(session: TerminalSession) {
         self.session = session
         self.spec = session.spec
@@ -121,6 +131,7 @@ final class AIChatController {
     // MARK: - 请求循环
 
     private func runLoop(client: AIChatClient) async {
+        cwdContext = await resolveWorkingDirectory()
         for _ in 0..<Self.maxLoops {
             let assistant = AIChatMessage(role: .assistant)
             messages.append(assistant)
@@ -218,7 +229,7 @@ final class AIChatController {
             call.status = .running
         }
 
-        guard let session, let outcome = await session.runAICommand(command) else {
+        guard let session, let outcome = await session.runAICommand(command, startingDirectory: autoStartDirectory) else {
             call.status = .done
             call.output = String(localized: "会话未连接,无法执行命令。")
             return result("Not connected to the server; the command was not run.", isError: true)
@@ -260,14 +271,40 @@ final class AIChatController {
             lines.append("- ⚠️ This host is marked as PRODUCTION. Be extra careful; avoid risky changes unless explicitly asked.")
         }
         if let cwd = session?.currentRemoteDirectory {
-            lines.append("The user's terminal working directory is \(cwd) (your commands start from the login directory, not there).")
+            // OSC 7 可能在对话中途才开始上报(比如用户刚 cd),读实时值优先于探测缓存
+            lines.append("The user's terminal is currently in \(cwd) (reported by shell integration). run_command starts there automatically.")
+        } else {
+            switch cwdContext {
+            case .probed(let dirs) where dirs.count == 1:
+                lines.append("The user's terminal appears to be in \(dirs[0]) — inferred from the remote shell process; usually correct but not authoritative. run_command starts there automatically; verify with pwd before anything destructive.")
+            case .probed(let dirs):
+                lines.append("Multiple terminals share this connection; the user's working directory is one of: \(dirs.joined(separator: ", ")) (inferred from shell processes). run_command starts in the login directory — cd yourself based on context, or ask the user which one they mean.")
+            case .reported, .unknown:
+                lines.append("The user's terminal working directory is unknown (shell integration is not enabled on this host and no shell process could be probed). run_command starts in the login directory. If the user refers to their current directory, ask them for the path, and mention that enabling Berth's command integration (one-click install in the server info panel, ⌘I) lets you know it automatically.")
+            }
         }
         return lines.joined(separator: "\n")
     }
 
+    /// 每条用户消息发出前解析一次当前目录:OSC 7 实时值优先,缺席时做一次连接内探测。
+    /// 探测只在这里做(不逐工具轮做),一次 exec 往返,失败静默降级为 unknown。
+    private func resolveWorkingDirectory() async -> WorkingDirectoryContext {
+        guard let session else { return .unknown }
+        if let cwd = session.currentRemoteDirectory { return .reported(cwd) }
+        let probed = await session.probeRemoteWorkingDirectories()
+        return probed.isEmpty ? .unknown : .probed(probed)
+    }
+
+    /// run_command 自动 cd 的目标:OSC 7 实时值,或探测出的唯一候选;多候选/未知时不自动 cd
+    private var autoStartDirectory: String? {
+        if let cwd = session?.currentRemoteDirectory { return cwd }
+        if case .probed(let dirs) = cwdContext, dirs.count == 1 { return dirs[0] }
+        return nil
+    }
+
     private static let runCommandTool: [String: Any] = [
         "name": "run_command",
-        "description": "Run a non-interactive shell command on the connected SSH server. Returns merged stdout/stderr and the exit code. Commands run via `sh -c` in a fresh exec channel (no state is kept between calls; use absolute paths or chain with `cd dir && …`).",
+        "description": "Run a non-interactive shell command on the connected SSH server. Returns merged stdout/stderr and the exit code. Commands run via `sh -c` in a fresh exec channel (no state is kept between calls). When the user's working directory is known (see system prompt) each command starts there; otherwise it starts in the login directory — use absolute paths or chain with `cd dir && …` when unsure.",
         "input_schema": [
             "type": "object",
             "properties": [

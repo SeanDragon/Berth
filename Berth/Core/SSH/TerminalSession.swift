@@ -467,7 +467,7 @@ final class TerminalSession: Identifiable {
         printf 'DISK=%s\\n' "$(df -h / 2>/dev/null | awk 'NR==2{print $3\"/\"$2\" (\"$5\")\"}')"
         """
         do {
-            let buffer = try await client.executeCommand("sh -c \(shellQuote(script))")
+            let buffer = try await client.executeCommand("sh -c \(Self.shellQuote(script))")
             let text = String(buffer: buffer)
             return ServerInfo(parsing: text)
         } catch {
@@ -475,7 +475,7 @@ final class TerminalSession: Identifiable {
         }
     }
 
-    private func shellQuote(_ s: String) -> String {
+    nonisolated private static func shellQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
@@ -484,14 +484,13 @@ final class TerminalSession: Identifiable {
 
     /// AI 助手用:同一连接上另开 exec 通道执行命令(不影响 PTY)。
     /// stderr 合并进输出,末尾标记捕获退出码,因此非零退出不会让 executeCommand 抛错。
+    /// startingDirectory 非空时先 cd 过去再执行(用户终端所在目录,见 AIChatController)。
     /// 返回 nil = 会话未连接。5 分钟超时(防 tail -f 之类挂死)。
-    func runAICommand(_ command: String) async -> (output: String, exitCode: Int?)? {
+    func runAICommand(_ command: String, startingDirectory: String? = nil) async -> (output: String, exitCode: Int?)? {
         guard let client else { return nil }
         let marker = "__BERTH_AI_EXIT__"
-        // 命令跑在子 shell 里:命令自己 exit 非零时只结束子 shell,包装脚本仍能打出标记行并
-        // 以 0 退出 —— 否则 Citadel 会按非零 exit-status 抛错,拿不到输出也拿不到退出码。
-        let script = "exec 2>&1\n(\n" + command + "\n)\nprintf '\\n\(marker):%s\\n' \"$?\""
-        let wrapped = "sh -c \(shellQuote(script))"
+        let script = Self.aiCommandScript(command, startingDirectory: startingDirectory, marker: marker)
+        let wrapped = "sh -c \(Self.shellQuote(script))"
         do {
             let buffer = try await withThrowingTaskGroup(of: ByteBuffer.self) { group in
                 group.addTask {
@@ -518,6 +517,78 @@ final class TerminalSession: Identifiable {
         } catch {
             return (String(localized: "命令执行失败:\(error.localizedDescription)"), nil)
         }
+    }
+
+    /// AI exec 通道的包装脚本。命令跑在子 shell 里:命令自己 exit 非零时只结束子 shell,
+    /// 包装脚本仍能打出标记行并以 0 退出 —— 否则 Citadel 会按非零 exit-status 抛错,
+    /// 拿不到输出也拿不到退出码。cd 失败时直接退出子 shell,错误留在输出里让模型自行恢复。
+    nonisolated static func aiCommandScript(_ command: String, startingDirectory: String?, marker: String) -> String {
+        var body = ""
+        if let directory = startingDirectory {
+            body += "cd \(shellQuote(directory)) || exit\n"
+        }
+        body += command
+        return "exec 2>&1\n(\n" + body + "\n)\nprintf '\\n\(marker):%s\\n' \"$?\""
+    }
+
+    /// AI 助手用:OSC 7 缺席时的兜底 —— exec 通道与 PTY 跑在同一条 SSH 连接上(M5 连接
+    /// 复用),服务端是同一个 sshd 会话进程的子进程。从 $$ 向上找到 sshd,枚举其带 TTY 的
+    /// 子进程(即各 PTY 的 shell),readlink /proc/<pid>/cwd 读出工作目录(无 /proc 的
+    /// macOS/BSD 远端退回 lsof)。只读、零配置、不触碰用户终端;拿不到返回空数组;
+    /// 同主机多标签共用连接时可能返回多个候选。10 秒超时。
+    func probeRemoteWorkingDirectories() async -> [String] {
+        guard let client else { return [] }
+        let script = """
+        p=$$
+        sid=
+        n=0
+        while [ $n -lt 6 ]; do
+          pp=$(ps -o ppid= -p "$p" 2>/dev/null | tr -d " ")
+          [ -n "$pp" ] && [ "$pp" -gt 1 ] 2>/dev/null || break
+          case "$(ps -o comm= -p "$pp" 2>/dev/null)" in
+            sshd*) sid=$pp; break ;;
+          esac
+          p=$pp
+          n=$((n+1))
+        done
+        [ -n "$sid" ] || exit 0
+        ps -A -o pid= -o ppid= -o tty= 2>/dev/null | while read cpid cppid ctty; do
+          [ "$cppid" = "$sid" ] || continue
+          case "$ctty" in ""|"?"|"??") continue ;; esac
+          readlink "/proc/$cpid/cwd" 2>/dev/null && continue
+          lsof -a -p "$cpid" -d cwd -Fn 2>/dev/null | sed -n "s/^n//p"
+        done | sort -u
+        exit 0
+        """
+        do {
+            let buffer = try await withThrowingTaskGroup(of: ByteBuffer.self) { group in
+                group.addTask {
+                    try await client.executeCommand("sh -c \(Self.shellQuote(script))", maxResponseSize: 1 << 16, mergeStreams: false)
+                }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(10))
+                    throw CancellationError()
+                }
+                guard let first = try await group.next() else { throw CancellationError() }
+                group.cancelAll()
+                return first
+            }
+            return Self.parseWorkingDirectoryProbe(String(buffer: buffer))
+        } catch {
+            return []
+        }
+    }
+
+    /// 探测输出 → 绝对路径列表(去重保序,丢弃空行与非绝对路径的杂音)
+    nonisolated static func parseWorkingDirectoryProbe(_ output: String) -> [String] {
+        var seen = Set<String>()
+        var directories: [String] = []
+        for line in output.split(separator: "\n") {
+            let path = line.trimmingCharacters(in: .whitespaces)
+            guard path.hasPrefix("/"), seen.insert(path).inserted else { continue }
+            directories.append(path)
+        }
+        return directories
     }
 
     enum ShellHighlightResult { case installed, alreadyEnabled, notZsh(String), failed(String) }
@@ -565,7 +636,7 @@ final class TerminalSession: Identifiable {
         [ "$added" = 1 ] && echo BERTH_DONE || echo BERTH_ALREADY
         """#
         do {
-            let buffer = try await client.executeCommand("sh -c \(shellQuote(script))")
+            let buffer = try await client.executeCommand("sh -c \(Self.shellQuote(script))")
             let out = String(buffer: buffer)
             if out.contains("BERTH_DONE") { return .installed }
             if out.contains("BERTH_ALREADY") { return .alreadyEnabled }
@@ -618,7 +689,7 @@ final class TerminalSession: Identifiable {
         echo BERTH_SWITCHED
         """#
         do {
-            let buffer = try await client.executeCommand("sh -c \(shellQuote(script))")
+            let buffer = try await client.executeCommand("sh -c \(Self.shellQuote(script))")
             let out = String(buffer: buffer)
             if out.contains("BERTH_SWITCHED") { return .needsRelogin }
             if out.contains("BERTH_CHSH_FAIL") { return .failed(String(localized: "切换默认 shell 失败(可能需要密码或权限)")) }
@@ -673,7 +744,7 @@ final class TerminalSession: Identifiable {
         echo BERTH_DONE
         """#
         do {
-            let buffer = try await client.executeCommand("sh -c \(shellQuote(script))")
+            let buffer = try await client.executeCommand("sh -c \(Self.shellQuote(script))")
             let out = String(buffer: buffer)
             if out.contains("BERTH_ALREADY") { return .alreadyEnabled }
             if out.contains("BERTH_DONE") { return .installed }
