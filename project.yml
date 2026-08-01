@@ -90,6 +90,7 @@ targets:
       - path: Berth/Core/SSH/KnownHostsStore.swift
       - path: Berth/Core/SSH/HostKeyValidation.swift
       - path: Berth/Core/SSH/OpenSSHFormat.swift
+      - path: Berth/Core/SSH/PrivateKeyFormat.swift
       - path: Berth/Core/SSH/SSHConnection.swift
       - path: Berth/Core/SSH/PortForwardService.swift
       - path: Berth/Core/SSH/ProxyConnector.swift

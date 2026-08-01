@@ -625,6 +625,16 @@
         }
       }
     },
+	"PKCS#8 封装的 Ed25519": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PKCS#8-wrapped Ed25519"
+          }
+        }
+      }
+    },
     "Passphrase": {
       "localizations": {
         "en": {
@@ -904,6 +914,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "The iOS version doesn't support “%@” authentication yet"
+          }
+        }
+      }
+    },
+    "passphrase 不正确,无法解密这把私钥。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Incorrect passphrase — the private key could not be decrypted."
           }
         }
       }
@@ -1902,6 +1922,16 @@
         }
       }
     },
+    "内容里没有找到私钥。请粘贴完整的私钥文件,包含 -----BEGIN ... PRIVATE KEY----- 首尾两行。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No private key found in the content. Paste the whole private key file, including the -----BEGIN ... PRIVATE KEY----- and END lines."
+          }
+        }
+      }
+    },
     "内核": {
       "localizations": {
         "en": {
@@ -1943,6 +1973,7 @@
       }
     },
     "分组": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3723,6 +3754,7 @@
       }
     },
     "无分组": {
+      "extractionState": "stale",
       "localizations": {
         "en": {
           "stringUnit": {
@@ -3772,12 +3804,12 @@
         }
       }
     },
-    "无法解析密钥:支持 OpenSSH 格式的 ed25519 / RSA 私钥;若有 passphrase 请一并填写。": {
+    "无法解析密钥:支持 ed25519 与 RSA 私钥(OpenSSH、PKCS#1、PKCS#8 格式);若有 passphrase 请一并填写。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unable to parse the key: OpenSSH-format ed25519 / RSA private keys are supported; include the passphrase if it has one."
+            "value": "Unable to parse the key: ed25519 and RSA private keys are supported (OpenSSH, PKCS#1 and PKCS#8 formats); include the passphrase if it has one."
           }
         }
       }
@@ -4762,6 +4794,16 @@
         }
       }
     },
+    "私钥内容损坏或不完整,无法解析。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The private key is corrupted or incomplete and cannot be parsed."
+          }
+        }
+      }
+    },
     "私钥只保存在 macOS Keychain 中,不写入磁盘文件。": {
       "localizations": {
         "en": {
@@ -4778,6 +4820,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Private key file"
+          }
+        }
+      }
+    },
+    "私钥用了不支持的加密算法 %@。请先用 `ssh-keygen -p -f <文件>` 转成 OpenSSH 格式再导入。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The private key uses an unsupported cipher (%@). Convert it to OpenSSH format first with `ssh-keygen -p -f <file>`, then import."
           }
         }
       }
@@ -5468,6 +5520,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This tab has active SSH connections (possibly multiple panes)."
+          }
+        }
+      }
+    },
+    "该类型": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "this type"
           }
         }
       }
