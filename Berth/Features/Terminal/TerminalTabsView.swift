@@ -34,6 +34,14 @@ struct TerminalTabsView: View {
                             .id(session.id)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
+                        if sessionManager.isDockerPanelVisible {
+                            Divider().overlay(ThemeStore.shared.current.borderColor)
+                            DockerPanelView(session: session) {
+                                sessionManager.isDockerPanelVisible = false
+                            }
+                            .id(session.id)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
                         if sessionManager.isInspectorVisible {
                             Divider().overlay(ThemeStore.shared.current.borderColor)
                             ServerInfoInspector(session: session) {
@@ -211,6 +219,15 @@ struct TerminalTabsView: View {
             ) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                     sessionManager.isSFTPVisible.toggle()
+                }
+            }
+            PanelIconButton(
+                symbol: "shippingbox",
+                help: String(localized: "Docker 状态"),
+                tint: sessionManager.isDockerPanelVisible ? ThemeStore.shared.current.accentColor : nil
+            ) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    sessionManager.isDockerPanelVisible.toggle()
                 }
             }
             PanelIconButton(

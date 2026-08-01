@@ -464,6 +464,16 @@
         }
       }
     },
+    "Docker 状态": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker status"
+          }
+        }
+      }
+    },
     "GitHub Light(浅色)": {
       "localizations": {
         "en": {
@@ -1848,6 +1858,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Octal: %03o"
+          }
+        }
+      }
+    },
+    "共 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld total"
           }
         }
       }
@@ -5994,6 +6014,16 @@
         }
       }
     },
+    "运行中 %lld": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld running"
+          }
+        }
+      }
+    },
     "运行中 · 端口 %@": {
       "localizations": {
         "en": {
@@ -6050,6 +6080,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No triggers yet"
+          }
+        }
+      }
+    },
+    "这台主机没有安装 Docker。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker is not installed on this host."
           }
         }
       }

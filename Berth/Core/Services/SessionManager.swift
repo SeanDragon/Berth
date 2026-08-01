@@ -27,6 +27,7 @@ final class SessionManager {
     var isSFTPVisible = false
     var isSnippetsPanelVisible = false
     var isAIPanelVisible = false
+    var isDockerPanelVisible = false
 
     /// 由 App 启动时注入,用于连接后回写主机的探测信息(系统名等)
     @ObservationIgnored var modelContainer: ModelContainer?
