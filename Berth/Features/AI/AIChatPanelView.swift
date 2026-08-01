@@ -223,6 +223,40 @@ struct AIChatMessageView: View {
                             .font(.system(size: 12.5))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                    case .heading(let level, let text):
+                        Text(rendered(text))
+                            .font(.system(size: level <= 2 ? 14 : 13, weight: .semibold))
+                            .textSelection(.enabled)
+                            .padding(.top, 3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    case .list(let items):
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(item.marker)
+                                        .font(.system(size: 12.5))
+                                        .foregroundStyle(.secondary)
+                                        .monospacedDigit()
+                                    Text(rendered(item.text))
+                                        .font(.system(size: 12.5))
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                            }
+                        }
+                    case .quote(let text):
+                        HStack(alignment: .top, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(theme.accentColor.opacity(0.4))
+                                .frame(width: 3)
+                            Text(rendered(text))
+                                .font(.system(size: 12.5))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    case .divider:
+                        Divider()
                     case .code(let language, let code):
                         AICodeBlockView(language: language, code: code, session: session)
                     }

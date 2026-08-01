@@ -54,4 +54,99 @@ final class AIMarkdownParserTests: XCTestCase {
     func testEmptyFenceProducesNoBlock() {
         XCTAssertEqual(AIMarkdownParser.parse("```bash\n```"), [])
     }
+
+    // MARK: - 块级语法(标题/列表/引用/分隔线)
+
+    func testBlankLineSplitsParagraphs() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("第一段\n\n第二段"),
+            [.text("第一段"), .text("第二段")]
+        )
+    }
+
+    func testHeadings() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("## 排查步骤\n正文"),
+            [.heading(level: 2, text: "排查步骤"), .text("正文")]
+        )
+        // 无空格的 "#标签" 和 7 个 # 都不是标题
+        XCTAssertEqual(AIMarkdownParser.parse("#标签"), [.text("#标签")])
+        XCTAssertEqual(AIMarkdownParser.parse("####### 太深"), [.text("####### 太深")])
+    }
+
+    func testUnorderedList() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("- 甲\n* 乙\n+ 丙"),
+            [.list(items: [
+                AIListItem(marker: "•", text: "甲"),
+                AIListItem(marker: "•", text: "乙"),
+                AIListItem(marker: "•", text: "丙"),
+            ])]
+        )
+    }
+
+    func testOrderedListKeepsNumbers() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("1. 一\n2) 二\n10. 十"),
+            [.list(items: [
+                AIListItem(marker: "1.", text: "一"),
+                AIListItem(marker: "2.", text: "二"),
+                AIListItem(marker: "10.", text: "十"),
+            ])]
+        )
+    }
+
+    /// 年份、小数开头的正文不能误判成有序列表
+    func testOrderedListFalsePositives() {
+        XCTAssertEqual(AIMarkdownParser.parse("2024. 全年总结"), [.text("2024. 全年总结")])
+        XCTAssertEqual(AIMarkdownParser.parse("1.5 倍速率"), [.text("1.5 倍速率")])
+    }
+
+    func testQuoteJoinsLines() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("> 第一行\n> 第二行"),
+            [.quote("第一行\n第二行")]
+        )
+    }
+
+    func testDivider() {
+        XCTAssertEqual(AIMarkdownParser.parse("上\n\n---\n\n下"), [.text("上"), .divider, .text("下")])
+        XCTAssertEqual(AIMarkdownParser.parse("--"), [.text("--")])
+    }
+
+    /// 代码块内的 "# 注释"、"- 参数" 不能被当成标题/列表
+    func testBlockSyntaxInsideFenceIsLiteral() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("```\n# comment\n- flag\n```"),
+            [.code(language: nil, code: "# comment\n- flag")]
+        )
+    }
+
+    func testMixedDocument() {
+        let raw = """
+        ## 结论
+        磁盘满了。
+
+        > df 输出显示 /var 100%
+
+        处理:
+        1. 清日志
+        2. 扩容
+
+        ```bash
+        du -sh /var/log/*
+        ```
+        """
+        XCTAssertEqual(AIMarkdownParser.parse(raw), [
+            .heading(level: 2, text: "结论"),
+            .text("磁盘满了。"),
+            .quote("df 输出显示 /var 100%"),
+            .text("处理:"),
+            .list(items: [
+                AIListItem(marker: "1.", text: "清日志"),
+                AIListItem(marker: "2.", text: "扩容"),
+            ]),
+            .code(language: "bash", code: "du -sh /var/log/*"),
+        ])
+    }
 }
