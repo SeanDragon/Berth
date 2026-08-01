@@ -448,6 +448,8 @@ struct TerminalPaneView: View {
 
     @State private var searchModel = TerminalSearchModel()
     @State private var isSearchActive = false
+    @State private var dropModel = TerminalDropUploadModel()
+    @State private var isDropTargeted = false
     @State private var editingHost: Host?
     @State private var confirmingDelete = false
     /// 最近一次断线原因;非 nil 即挂着断线卡片。连上才清空,重连失败只换文案不重挂
@@ -502,7 +504,36 @@ struct TerminalPaneView: View {
                     .padding(.trailing, 12)
                 }
             }
+
+            TerminalDropOverlay(model: dropModel)
             }
+            .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
+                dropModel.handleDrop(providers, session: session)
+            }
+            .onChange(of: isDropTargeted) { _, targeted in
+                targeted ? dropModel.dragEntered(session: session) : dropModel.dragExited()
+            }
+        }
+        .sheet(item: $dropModel.pendingBatch) { batch in
+            DropDestinationSheet(batch: batch, model: dropModel, session: session)
+        }
+        .confirmationDialog(
+            "远端已有同名文件",
+            isPresented: Binding(
+                get: { dropModel.pendingOverwrite != nil },
+                set: { if !$0 { dropModel.pendingOverwrite = nil } }
+            ),
+            presenting: dropModel.pendingOverwrite
+        ) { pending in
+            Button("覆盖", role: .destructive) {
+                dropModel.resolveOverwrite(pending, overwrite: true, session: session)
+            }
+            Button("跳过同名文件") {
+                dropModel.resolveOverwrite(pending, overwrite: false, session: session)
+            }
+            Button("取消", role: .cancel) {}
+        } message: { pending in
+            Text("目标目录 \(pending.directory) 已存在:\(pending.conflicts.joined(separator: "、"))")
         }
         .task {
             // 启动恢复出来的标签是 idle 的(见 restoreSessions),切到哪个才连哪个

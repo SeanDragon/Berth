@@ -34,6 +34,7 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runReuseIfRequested(container: container)
                     await M2AcceptanceTest.runKeychainProbeIfRequested()
                     await M2AcceptanceTest.runSFTPEditIfRequested()
+                    await M2AcceptanceTest.runDropUploadIfRequested()
                     await M2AcceptanceTest.runAICommandIfRequested(container: container)
                     await M2AcceptanceTest.runAIChatIfRequested(container: container)
                     await DemoScene.runIfRequested(container: container)

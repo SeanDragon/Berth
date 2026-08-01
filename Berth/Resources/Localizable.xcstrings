@@ -1072,12 +1072,62 @@
         }
       }
     },
+    "上传": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload"
+          }
+        }
+      }
+    },
+    "上传 %@(%lld/%lld)…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploading %@ (%lld/%lld)…"
+          }
+        }
+      }
+    },
     "上传 %@…": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Uploading %@…"
+          }
+        }
+      }
+    },
+    "上传到": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload to"
+          }
+        }
+      }
+    },
+    "上传到哪个目录?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload to which directory?"
+          }
+        }
+      }
+    },
+    "上传失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload failed: %@"
           }
         }
       }
@@ -1448,6 +1498,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Session"
+          }
+        }
+      }
+    },
+    "会话未连接,无法上传。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session not connected — cannot upload."
           }
         }
       }
@@ -3033,6 +3093,16 @@
         }
       }
     },
+    "已上传 %lld 个文件到 %@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploaded %lld file(s) to %@"
+          }
+        }
+      }
+    },
     "已中止连接:服务器主机密钥与 known_hosts 记录不一致,可能存在中间人攻击。确认服务器确实更换过密钥后,可在连接时选择更新。": {
       "localizations": {
         "en": {
@@ -3804,6 +3874,16 @@
         }
       }
     },
+    "无法确定终端当前目录。在服务器信息面板(⌘I)启用命令集成后,下次拖放可自动上传到你所在的目录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't determine the terminal's current directory. Enable command integration in the server info panel (⌘I) and future drops will upload straight to where you are."
+          }
+        }
+      }
+    },
     "无法解析密钥:支持 ed25519 与 RSA 私钥(OpenSSH、PKCS#1、PKCS#8 格式);若有 passphrase 请一并填写。": {
       "localizations": {
         "en": {
@@ -3940,6 +4020,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ keys aren't supported yet. Berth supports ed25519 in OpenSSH format, and RSA in OpenSSH / PKCS#1 / PKCS#8 format."
+          }
+        }
+      }
+    },
+    "暂不支持上传文件夹,请拖入文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folders can't be uploaded yet — drop files instead."
           }
         }
       }
@@ -4190,6 +4280,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "From ~/.ssh/config (read-only)"
+          }
+        }
+      }
+    },
+    "松手后选择上传目录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Release to choose a destination"
           }
         }
       }
@@ -4474,6 +4574,16 @@
         }
       }
     },
+    "没有需要上传的文件(同名文件已全部跳过)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to upload (all conflicting files were skipped)."
+          }
+        }
+      }
+    },
     "活跃会话": {
       "localizations": {
         "en": {
@@ -4720,6 +4830,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Target host"
+          }
+        }
+      }
+    },
+    "目标目录 %@ 已存在:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Destination %@ already contains: %@"
+          }
+        }
+      }
+    },
+    "目标目录权限不足": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No write permission in the destination directory"
           }
         }
       }
@@ -5334,6 +5464,16 @@
         }
       }
     },
+    "覆盖": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overwrite"
+          }
+        }
+      }
+    },
     "规则": {
       "localizations": {
         "en": {
@@ -5714,6 +5854,16 @@
         }
       }
     },
+    "跳过同名文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skip existing files"
+          }
+        }
+      }
+    },
     "身份验证未通过,已取消连接。可在设置中关闭「使用密钥前要求 Touch ID」。": {
       "localizations": {
         "en": {
@@ -5930,6 +6080,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remote %@:%@ → %@:%@"
+          }
+        }
+      }
+    },
+    "远端已有同名文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Files already exist on the server"
+          }
+        }
+      }
+    },
+    "远端目录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote directory"
           }
         }
       }

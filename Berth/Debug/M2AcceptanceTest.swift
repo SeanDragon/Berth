@@ -425,6 +425,83 @@ enum M2AcceptanceTest {
         browser.close()
     }
 
+    /// 拖放上传验收:BERTH_DROPUPLOAD_AUTOTEST=1。连目标(测试容器无命令集成,cwd 走
+    /// 连接内探测)→ 探测出唯一目录 → 上传 → 二次上传同名触发覆盖确认 → 覆盖 → 校验 → 清理。
+    static func runDropUploadIfRequested() async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BERTH_DROPUPLOAD_AUTOTEST"] == "1",
+              let host = env["BERTH_TEST_HOST"],
+              let user = env["BERTH_TEST_USER"],
+              let keyFile = env["BERTH_TEST_KEYFILE"],
+              let dumpBase = env["BERTH_TEST_DUMP"] else { return }
+        func log(_ line: String) {
+            try? line.write(toFile: dumpBase + ".drop.log", atomically: true, encoding: .utf8)
+        }
+        let port = Int(env["BERTH_TEST_PORT"] ?? "22") ?? 22
+        UserDefaults.standard.set(false, forKey: SettingsKeys.requireTouchIDForKeys)
+        let spec = HostSpec(
+            hostID: UUID(), label: "drop-test", hostname: host, port: port,
+            username: user, authMethod: .privateKeyFile, privateKeyPath: keyFile
+        )
+        let session = SessionManager.shared.open(spec: spec)
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if session.hostKeyPrompt != nil { session.resolveHostKeyPrompt(accepted: true) }
+            if case .connected = session.state { break }
+            if case .disconnected(let reason) = session.state { log("DROP_FAIL 连接失败 \(reason)"); return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard case .connected = session.state else { log("DROP_FAIL 连接超时"); return }
+        // 等远端 shell 起来,探测才有带 TTY 的子进程可找
+        try? await Task.sleep(for: .milliseconds(1500))
+
+        // 目录解析:测试容器没有命令集成,OSC 7 为 nil,必须走探测拿到唯一候选
+        let osc7 = session.currentRemoteDirectory
+        let probed = await session.probeRemoteWorkingDirectories()
+        guard let directory = osc7 ?? (probed.count == 1 ? probed.first : nil) else {
+            log("DROP_FAIL 目录解析失败 osc7=\(osc7 ?? "nil") probed=\(probed)")
+            return
+        }
+
+        let payload = "berth-drop-\(Int.random(in: 1000...9999))".data(using: .utf8)!
+        let localUp = URL(fileURLWithPath: NSTemporaryDirectory() + "berth_drop_up.txt")
+        try? payload.write(to: localUp)
+
+        let model = TerminalDropUploadModel()
+        await model.upload([localUp], to: directory, session: session)
+        guard case .done = model.phase else { log("DROP_FAIL 首次上传 phase=\(model.phase)"); return }
+
+        // 同名再传:必须停在覆盖确认,而不是静默覆盖
+        await model.upload([localUp], to: directory, session: session)
+        guard let pending = model.pendingOverwrite, pending.conflicts == ["berth_drop_up.txt"] else {
+            log("DROP_FAIL 未触发覆盖确认 pending=\(String(describing: model.pendingOverwrite))")
+            return
+        }
+        model.resolveOverwrite(pending, overwrite: true, session: session)
+        for _ in 0..<50 {
+            if case .done = model.phase { break }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard case .done = model.phase else { log("DROP_FAIL 覆盖上传 phase=\(model.phase)"); return }
+
+        // 远端校验 + 清理
+        do {
+            let sftp = try await session.openSFTP()
+            let remotePath = TerminalDropUploadModel.join(directory, "berth_drop_up.txt")
+            let file = try await sftp.openFile(filePath: remotePath, flags: .read)
+            let buffer = try await file.readAll()
+            try? await file.close()
+            let match = Data(buffer.readableBytesView) == payload
+            try await sftp.remove(at: remotePath)
+            try? await sftp.close()
+            log(match
+                ? "DROP_OK dir=\(directory) probed=\(osc7 == nil) overwriteConfirmed=true"
+                : "DROP_FAIL 内容不一致")
+        } catch {
+            log("DROP_FAIL 校验 \(error)")
+        }
+    }
+
     /// AI 命令执行验收:BERTH_AI_AUTOTEST=1。连目标后走 runAICommand(AI 助手执行命令的通道):
     /// 验证 stdout/stderr 合并、非零退出码不抛错而是被解析出来、PTY 不受影响。
     static func runAICommandIfRequested(container: ModelContainer) async {
