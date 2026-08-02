@@ -7,6 +7,19 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
     /// 生产环境主机:任何粘贴都强制确认(不止多行/危险命令)
     var isProductionHost = false
 
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        // SwiftTerm 默认 .overlay:独立 NSScroller 脱离 NSScrollView 后 overlay 滑块
+        // 永远不会绘制(显隐动画由 NSScrollView 私有管理),但宽度仍被预留,
+        // 表现为右侧空白条且看不到滚动位置(issue #8)。legacy 样式可正常绘制。
+        scrollerStyle = .legacy
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        scrollerStyle = .legacy
+    }
+
     // MARK: - 右键菜单(复制/粘贴 + 分屏)
 
     override func menu(for event: NSEvent) -> NSMenu? {
