@@ -146,6 +146,16 @@ final class SessionManager {
             isSFTPVisible = false
             isInspectorVisible = false
         }
+        refocusSelectedTerminal()
+    }
+
+    /// 切标签/关 pane 后把键盘焦点还给当前聚焦的终端(issue #9)。
+    /// 非选中标签的终端视图不在窗口层级里,要等 SwiftUI 把新视图挂回窗口后
+    /// makeFirstResponder 才有效,故延后一个 runloop。
+    private func refocusSelectedTerminal() {
+        DispatchQueue.main.async { [weak self] in
+            self?.selected?.focusTerminal()
+        }
     }
 
     // MARK: - 关闭
@@ -222,6 +232,7 @@ final class SessionManager {
             isAIPanelVisible = false
         }
         persistOpenTabs()
+        refocusSelectedTerminal()
     }
 
     // MARK: - 选择
@@ -236,6 +247,7 @@ final class SessionManager {
             isInspectorVisible = false
         }
         _ = tab
+        refocusSelectedTerminal()
     }
 
     /// 兼容旧调用:按会话 id 选中(聚焦其所在标签的该 pane)
