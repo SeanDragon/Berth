@@ -125,6 +125,9 @@ section h2 {
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 .nav-lang:hover { color: var(--fg); border-color: var(--line-2); }
+.nav-gh { display: inline-flex; color: var(--mut); transition: color 0.15s ease; }
+.nav-gh:hover { color: var(--fg); }
+.nav-gh svg { display: block; }
 .nav-cta { padding: 7px 18px; font-size: 13.5px; }
 
 /* ---------- 夜海(hero 背景) ---------- */
@@ -416,6 +419,7 @@ a:focus-visible, button:focus-visible, input:focus-visible {
   .theme-grid { grid-template-columns: 1fr 1fr; }
   .security-list { grid-template-columns: 1fr; gap: 28px; }
   .nav-links { display: none; }
+  .nav-gh { margin-left: auto; }
 }
 
 @media (max-width: 600px) {
