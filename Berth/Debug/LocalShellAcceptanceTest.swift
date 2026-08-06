@@ -85,9 +85,40 @@ enum LocalShellAcceptanceTest {
         mark(customText.contains("shell_is_-sh") ? "CUSTOM_SHELL_OK" : "CUSTOM_SHELL_MISMATCH")
         dump(custom, to: dumpBase + ".custom")
 
-        // 6. 全部关闭(exit 走自动关,首个会话 ⌘W 路径)
         custom.sendText("exit\n")
         _ = await waitFor(timeout: 5) { manager.sessions.count == 1 }
+
+        // 5b. 常见 shell 矩阵(issue #10 回归):zsh/bash 验证作业控制真开
+        //(无控制终端时 zsh monitor 为 off),fish 验证能活到执行命令
+        //(无控制终端时 fish 启动即退)。marker 带算术求值,防命令回显误判。
+        let matrix: [(path: String, probe: String, marker: String)] = [
+            ("/bin/zsh", "[[ -o monitor ]] && echo BERTH_JCZSH_$((40+2))\n", "BERTH_JCZSH_42"),
+            ("/bin/bash", "[[ -o monitor ]] && echo BERTH_JCBASH_$((40+2))\n", "BERTH_JCBASH_42"),
+            ("/opt/homebrew/bin/fish", "echo BERTH_FISH_(math 40+2)\n", "BERTH_FISH_42"),
+        ]
+        for entry in matrix {
+            guard FileManager.default.isExecutableFile(atPath: entry.path) else {
+                mark("MATRIX_SKIP \(entry.path)")
+                continue
+            }
+            UserDefaults.standard.set(entry.path, forKey: SettingsKeys.localShellPath)
+            let probe = manager.open(spec: .localShell())
+            guard await waitForConnected(probe, timeout: 10) else {
+                mark("MATRIX_CONNECT_FAIL \(entry.path) state=\(probe.state)")
+                return
+            }
+            try? await Task.sleep(for: .seconds(1.5))
+            probe.sendText(entry.probe)
+            try? await Task.sleep(for: .seconds(1))
+            let passed = bufferText(probe).contains(entry.marker)
+            mark(passed ? "MATRIX_OK \(entry.path)" : "MATRIX_FAIL \(entry.path)")
+            manager.closePane(probe)
+            _ = await waitFor(timeout: 5) { manager.sessions.count == 1 }
+            if !passed { return }
+        }
+        UserDefaults.standard.removeObject(forKey: SettingsKeys.localShellPath)
+
+        // 6. 全部关闭(首个会话 ⌘W 路径)
         manager.closePane(session)
         let allClosed = await waitFor(timeout: 5) { manager.sessions.isEmpty }
         mark(allClosed ? "ALL_DONE" : "CLOSE_INCOMPLETE sessions=\(manager.sessions.count)")
