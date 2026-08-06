@@ -5,6 +5,9 @@ import SwiftUI
 struct TerminalTabsView: View {
     @Environment(SessionManager.self) private var sessionManager
     @Environment(\.openWindow) private var openWindow
+    /// 终端区实测宽度:标题栏行(chips+按钮)按它定宽,才能让标签区铺满整个标题栏
+    /// (toolbar 的分段布局不给 navigation 项撑满的机会,只能显式给宽)
+    @State private var contentWidth: CGFloat = 0
 
     var body: some View {
         @Bindable var manager = sessionManager
@@ -26,7 +29,8 @@ struct TerminalTabsView: View {
                         sessionManager.focusPane(id)
                     }
                     if let session = sessionManager.selected {
-                        if sessionManager.isSFTPVisible {
+                        // SFTP/Docker/服务器信息是 SSH 专属能力,本地 Shell 会话不挂载
+                        if sessionManager.isSFTPVisible, !session.spec.isLocal {
                             Divider().overlay(ThemeStore.shared.current.borderColor)
                             SFTPPanelView(session: session) {
                                 sessionManager.isSFTPVisible = false
@@ -34,7 +38,7 @@ struct TerminalTabsView: View {
                             .id(session.id)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
-                        if sessionManager.isDockerPanelVisible {
+                        if sessionManager.isDockerPanelVisible, !session.spec.isLocal {
                             Divider().overlay(ThemeStore.shared.current.borderColor)
                             DockerPanelView(session: session) {
                                 sessionManager.isDockerPanelVisible = false
@@ -42,7 +46,7 @@ struct TerminalTabsView: View {
                             .id(session.id)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
-                        if sessionManager.isInspectorVisible {
+                        if sessionManager.isInspectorVisible, !session.spec.isLocal {
                             Divider().overlay(ThemeStore.shared.current.borderColor)
                             ServerInfoInspector(session: session) {
                                 sessionManager.isInspectorVisible = false
@@ -73,49 +77,23 @@ struct TerminalTabsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeStore.shared.current.chromeBackground)
-        // 顶部统一一行:标签 chips 靠左 | 会话胶囊居中 | 面板按钮组靠右(原独立标签条撤掉)。
-        // chips 与按钮组自带胶囊样式,隐藏系统工具栏 item 的玻璃底避免双层;居中胶囊用系统底。
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { width in
+            contentWidth = width
+        }
+        // 顶部统一一行:标签 chips 靠左伸展 | 面板按钮组钉右(会话信息胶囊移入底部状态栏,
+        // 给标签让位)。toolbar 的分段布局不让单个 item 撑满,所以按终端区实测宽度显式定宽,
+        // 行内用 Spacer 自己排布。
         .toolbar {
             if #available(macOS 26.0, *) {
                 ToolbarItem(placement: .navigation) {
-                    if !sessionManager.tabs.isEmpty { tabChips }
+                    if !sessionManager.tabs.isEmpty { toolbarRow }
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
                 ToolbarItem(placement: .navigation) {
-                    if !sessionManager.tabs.isEmpty { tabChips }
-                }
-            }
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .principal) {
-                    if let session = sessionManager.selected {
-                        SessionTitleCapsule(session: session) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                sessionManager.isInspectorVisible.toggle()
-                            }
-                        }
-                    }
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .principal) {
-                    if let session = sessionManager.selected {
-                        SessionTitleCapsule(session: session) {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                sessionManager.isInspectorVisible.toggle()
-                            }
-                        }
-                    }
-                }
-            }
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .primaryAction) {
-                    if !sessionManager.tabs.isEmpty { panelButtons }
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    if !sessionManager.tabs.isEmpty { panelButtons }
+                    if !sessionManager.tabs.isEmpty { toolbarRow }
                 }
             }
         }
@@ -134,7 +112,9 @@ struct TerminalTabsView: View {
             }
             Button("取消", role: .cancel) { manager.pendingCloseSession = nil }
         } message: {
-            Text("该分屏有活跃的 SSH 连接。")
+            Text(sessionManager.pendingCloseSession?.spec.isLocal == true
+                ? String(localized: "该分屏有正在运行的本地 Shell。")
+                : String(localized: "该分屏有活跃的 SSH 连接。"))
         }
         .alert(
             "关闭标签页?",
@@ -151,11 +131,29 @@ struct TerminalTabsView: View {
             }
             Button("取消", role: .cancel) { manager.pendingCloseTab = nil }
         } message: {
-            Text("该标签页含活跃的 SSH 连接(可能有多个分屏)。")
+            Text({
+                let firstLeaf = sessionManager.pendingCloseTab?.root.firstLeaf
+                let isLocal = firstLeaf.flatMap { sessionManager.session($0) }?.spec.isLocal == true
+                return isLocal
+                    ? String(localized: "该标签页含正在运行的本地 Shell(可能有多个分屏)。")
+                    : String(localized: "该标签页含活跃的 SSH 连接(可能有多个分屏)。")
+            }())
         }
     }
 
-    /// 标签 chips(标题栏左侧):每个标签一枚 chip(含嵌套分屏);两端渐隐,选中自动滚入
+    /// 标题栏整行:chips 靠左伸展占满剩余宽度,面板按钮组钉右。宽度取终端区实测值,
+    /// 留出 navigation 项自身的左右边距
+    private var toolbarRow: some View {
+        HStack(spacing: 8) {
+            tabChips
+            Spacer(minLength: 8)
+            panelButtons
+        }
+        .frame(width: max(contentWidth - 28, 0))
+    }
+
+    /// 标签 chips(标题栏左侧):每个标签一枚 chip(含嵌套分屏);两端渐隐,选中自动滚入;
+    /// 「+」新建菜单跟在最后一个 chip 后(Chrome 式),随标签一起滚动
     private var tabChips: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -171,10 +169,11 @@ struct TerminalTabsView: View {
                         )
                         .id(tab.id)
                     }
+                    newTabMenu
                 }
                 .padding(.horizontal, 10)
             }
-            .frame(maxWidth: 560, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .mask(
                 HStack(spacing: 0) {
                     LinearGradient(colors: [.clear, .black], startPoint: .leading, endPoint: .trailing)
@@ -189,6 +188,38 @@ struct TerminalTabsView: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selected, anchor: .center) }
             }
         }
+    }
+
+    /// 「+」新建菜单:本地 Shell / 复制当前连接 / 快速连接
+    private var newTabMenu: some View {
+        Menu {
+            Button {
+                _ = sessionManager.open(spec: .localShell())
+            } label: {
+                Label(String(localized: "新建本地 Shell"), systemImage: "terminal")
+            }
+            Button {
+                sessionManager.duplicateCurrent()
+            } label: {
+                Label(String(localized: "复制当前连接为新标签"), systemImage: "plus.square.on.square")
+            }
+            .disabled(sessionManager.selected == nil)
+            Button {
+                QuickConnectController.shared.toggle()
+            } label: {
+                Label(String(localized: "快速连接…"), systemImage: "bolt.fill")
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 20, height: 20)
+                .contentShape(Circle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("新建标签页(本地 Shell / 快速连接)")
     }
 
     /// Safari 式按钮组(标题栏右侧):一个大胶囊容器,内含各个圆形悬停按钮
@@ -212,31 +243,34 @@ struct TerminalTabsView: View {
                     sessionManager.isSnippetsPanelVisible.toggle()
                 }
             }
-            PanelIconButton(
-                symbol: "folder",
-                help: String(localized: "SFTP 文件(⌘⇧F)"),
-                tint: sessionManager.isSFTPVisible ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    sessionManager.isSFTPVisible.toggle()
+            // SSH 专属面板按钮:本地 Shell 会话不显示
+            if sessionManager.selected?.spec.isLocal != true {
+                PanelIconButton(
+                    symbol: "folder",
+                    help: String(localized: "SFTP 文件(⌘⇧F)"),
+                    tint: sessionManager.isSFTPVisible ? ThemeStore.shared.current.accentColor : nil
+                ) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        sessionManager.isSFTPVisible.toggle()
+                    }
                 }
-            }
-            PanelIconButton(
-                symbol: "shippingbox",
-                help: String(localized: "Docker 状态"),
-                tint: sessionManager.isDockerPanelVisible ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    sessionManager.isDockerPanelVisible.toggle()
+                PanelIconButton(
+                    symbol: "shippingbox",
+                    help: String(localized: "Docker 状态"),
+                    tint: sessionManager.isDockerPanelVisible ? ThemeStore.shared.current.accentColor : nil
+                ) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        sessionManager.isDockerPanelVisible.toggle()
+                    }
                 }
-            }
-            PanelIconButton(
-                symbol: "sidebar.right",
-                help: String(localized: "服务器信息(⌘I)"),
-                tint: sessionManager.isInspectorVisible ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    sessionManager.isInspectorVisible.toggle()
+                PanelIconButton(
+                    symbol: "sidebar.right",
+                    help: String(localized: "服务器信息(⌘I)"),
+                    tint: sessionManager.isInspectorVisible ? ThemeStore.shared.current.accentColor : nil
+                ) {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        sessionManager.isInspectorVisible.toggle()
+                    }
                 }
             }
         }
@@ -276,75 +310,26 @@ struct TerminalTabsView: View {
                 .foregroundStyle(.tertiary)
             Text("点击左侧主机开始连接")
                 .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Button {
+                    QuickConnectController.shared.toggle()
+                } label: {
+                    Label(String(localized: "快速连接"), systemImage: "bolt.fill")
+                }
+                Button {
+                    _ = sessionManager.open(spec: .localShell())
+                } label: {
+                    Label(String(localized: "本地 Shell"), systemImage: "terminal")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .padding(.top, 6)
+            Text(verbatim: "⌘K · ⇧⌘T")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
-/// 标题栏中央的会话信息胶囊(Safari 地址栏式):状态点 + 名称 + user@host,点按开合信息面板
-private struct SessionTitleCapsule: View {
-    let session: TerminalSession
-    let action: () -> Void
-
-    @State private var hovering = false
-
-    private var theme: TerminalTheme { ThemeStore.shared.current }
-
-    private var stateColor: Color {
-        switch session.state {
-        case .idle: return .gray
-        case .connecting: return .yellow
-        case .connected: return .green
-        case .disconnected(let reason):
-            return reason == .userInitiated ? .gray : .red
-        }
-    }
-
-    private var address: String {
-        let port = session.spec.port == 22 ? "" : ":\(session.spec.port)"
-        return "\(session.spec.username)@\(session.spec.hostname)\(port)"
-    }
-
-    private var isProd: Bool { session.spec.isProduction }
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                if isProd {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 9))
-                } else {
-                    Circle()
-                        .fill(stateColor)
-                        .frame(width: 6, height: 6)
-                }
-                Text(session.spec.label)
-                    .font(.system(size: 12, weight: isProd ? .semibold : .medium))
-                Text(address)
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(isProd ? Color.white.opacity(0.85) : Color.secondary)
-            }
-            .lineLimit(1)
-            .foregroundStyle(isProd ? .white : .primary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 4)
-            // 系统 principal 胶囊底已隐藏,这里自绘唯一一层:生产=红,否则=主题浮层色
-            .background(
-                Capsule()
-                    .fill(isProd ? Color(red: 0.78, green: 0.13, blue: 0.13) : theme.elevatedBackground)
-                    .overlay(
-                        Capsule().stroke(
-                            isProd ? .clear : (hovering ? theme.accentColor.opacity(0.4) : theme.borderColor),
-                            lineWidth: 1
-                        )
-                    )
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .animation(.easeOut(duration: 0.12), value: hovering)
-        .onHover { hovering = $0 }
-        .help(isProd ? "⚠️ 生产环境:\(address)" : "当前会话:\(address) —— 点按查看服务器信息(⌘I)")
     }
 }
 
@@ -404,15 +389,41 @@ private struct TerminalTabChip: View {
     let close: () -> Void
 
     @State private var isHovering = false
+    /// 双击/右键重命名:行内 TextField 编辑,回车/失焦提交,Esc 取消
+    @State private var isRenaming = false
+    @State private var renameDraft = ""
+    @FocusState private var renameFocused: Bool
+
+    /// 自定义名优先;否则跟随聚焦会话(主机打码规则不变)
+    private var displayTitle: String {
+        if let custom = tab.customTitle, !custom.isEmpty { return custom }
+        return focusedSession.map { PrivacyMode.shared.maskHost(in: $0.spec.label, hostname: $0.spec.hostname) } ?? String(localized: "终端")
+    }
 
     var body: some View {
         HStack(spacing: 6) {
             Circle()
                 .fill(stateColor)
                 .frame(width: 6, height: 6)
-            Text(focusedSession?.spec.label ?? String(localized: "终端"))
-                .font(.system(size: 12))
-                .lineLimit(1)
+            if isRenaming {
+                TextField("", text: $renameDraft)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12))
+                    .frame(width: max(64, CGFloat(renameDraft.count) * 7 + 14))
+                    .focused($renameFocused)
+                    .onSubmit(commitRename)
+                    .onExitCommand {
+                        isRenaming = false
+                        focusedSession?.focusTerminal()
+                    }
+                    .onChange(of: renameFocused) { _, focused in
+                        if !focused, isRenaming { commitRename() }
+                    }
+            } else {
+                Text(displayTitle)
+                    .font(.system(size: 12))
+                    .lineLimit(1)
+            }
             if paneCount > 1 {
                 Text("\(paneCount)")
                     .font(.system(size: 9, weight: .semibold).monospacedDigit())
@@ -442,8 +453,31 @@ private struct TerminalTabChip: View {
         .foregroundStyle(isSelected ? .primary : .secondary)
         .contentShape(Capsule())
         .animation(.easeOut(duration: 0.12), value: isHovering)
+        .onTapGesture(count: 2, perform: startRename)
         .onTapGesture(perform: select)
         .onHover { isHovering = $0 }
+        .contextMenu {
+            Button(String(localized: "重命名标签")) { startRename() }
+            if tab.customTitle != nil {
+                Button(String(localized: "恢复默认名称")) { tab.customTitle = nil }
+            }
+            Divider()
+            Button(String(localized: "关闭标签页"), role: .destructive, action: close)
+        }
+    }
+
+    private func startRename() {
+        renameDraft = tab.customTitle ?? displayTitle
+        isRenaming = true
+        // TextField 要等下一个 runloop 挂上视图层级,focus 才生效
+        DispatchQueue.main.async { renameFocused = true }
+    }
+
+    private func commitRename() {
+        let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        tab.customTitle = trimmed.isEmpty ? nil : trimmed
+        isRenaming = false
+        focusedSession?.focusTerminal()
     }
 
     private var stateColor: Color {
@@ -525,9 +559,14 @@ struct TerminalPaneView: View {
             TerminalDropOverlay(model: dropModel)
             }
             .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
-                dropModel.handleDrop(providers, session: session)
+                // 分流:本地 Shell 按 Terminal.app 惯例把路径写进命令行;SSH 会话走 SFTP 上传
+                if session.spec.isLocal {
+                    return insertDroppedPaths(providers)
+                }
+                return dropModel.handleDrop(providers, session: session)
             }
             .onChange(of: isDropTargeted) { _, targeted in
+                guard !session.spec.isLocal else { return }
                 targeted ? dropModel.dragEntered(session: session) : dropModel.dragExited()
             }
         }
@@ -597,6 +636,33 @@ struct TerminalPaneView: View {
         } message: {
             Text(deleteWarning)
         }
+    }
+
+    /// 本地 Shell 的拖拽:把文件路径(转义后)写进命令行,多个文件按拖入顺序空格分隔
+    private func insertDroppedPaths(_ providers: [NSItemProvider]) -> Bool {
+        let items = providers.filter { $0.canLoadObject(ofClass: URL.self) }
+        guard !items.isEmpty else { return false }
+        Task { @MainActor in
+            var paths: [String] = []
+            for provider in items {
+                let url: URL? = await withCheckedContinuation { cont in
+                    _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                        cont.resume(returning: url)
+                    }
+                }
+                if let url { paths.append(url.path) }
+            }
+            guard !paths.isEmpty else { return }
+            session.sendText(paths.map(Self.shellEscapePath).joined(separator: " ") + " ")
+        }
+        return true
+    }
+
+    /// 路径转义:简单字符原样,含特殊字符时用单引号包裹(内部单引号按 '\'' 处理)
+    static func shellEscapePath(_ path: String) -> String {
+        let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-~+@%:=,")
+        if path.unicodeScalars.allSatisfy({ safe.contains($0) }) { return path }
+        return "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private var deleteWarning: String {
@@ -694,11 +760,13 @@ struct TerminalPaneView: View {
                     Image(systemName: "bolt.slash.fill")
                         .font(.system(size: 16, weight: .medium))
                         .foregroundStyle(accent)
-                    Text(session.spec.label)
+                    Text(PrivacyMode.shared.maskHost(in: session.spec.label, hostname: session.spec.hostname))
                         .font(.system(size: 16, weight: .semibold))
                     Spacer(minLength: 0)
                 }
-                Text("\(session.spec.username)@\(session.spec.hostname)")
+                Text(session.spec.isLocal
+                    ? LocalShell.resolvedShellPath()
+                    : "\(session.spec.username)@\(PrivacyMode.shared.mask(session.spec.hostname))")
                     .font(.system(size: 12.5, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
@@ -728,25 +796,28 @@ struct TerminalPaneView: View {
                     }
                 }
                 HStack(spacing: 10) {
-                    Button(role: .destructive) {
-                        confirmingDelete = true
-                    } label: {
-                        Text("删除")
-                            .font(.system(size: 13.5))
-                            .frame(maxWidth: .infinity)
+                    // 本地 Shell 没有主机记录,删除/编辑不适用
+                    if !session.spec.isLocal {
+                        Button(role: .destructive) {
+                            confirmingDelete = true
+                        } label: {
+                            Text("删除")
+                                .font(.system(size: 13.5))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                        .disabled(showsRetrySpinner)
+                        Button {
+                            editHost()
+                        } label: {
+                            Text("编辑主机")
+                                .font(.system(size: 13.5))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(showsRetrySpinner)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(.red)
-                    .disabled(showsRetrySpinner)
-                    Button {
-                        editHost()
-                    } label: {
-                        Text("编辑主机")
-                            .font(.system(size: 13.5))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(showsRetrySpinner)
                     Button(action: retry) {
                         // 转圈期间按钮本身不置灰 —— 置灰的 ProgressView 看着像卡死。
                         // 靠 allowsHitTesting 挡住重复点击

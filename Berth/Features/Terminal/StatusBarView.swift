@@ -2,8 +2,10 @@ import SwiftUI
 
 /// 终端区底部状态栏:连接状态点 + user@host + 连接时长 + 端口转发 | CPU/内存(5s 轮询)+ 本地时钟 + 终端行列数。
 /// 跟随当前选中会话,时钟与时长每秒刷新。
+/// 左侧地址区兼任原标题胶囊的职责:SSH 会话点按开合服务器信息面板,生产环境红色警示。
 struct StatusBarView: View {
     let session: TerminalSession
+    @Environment(SessionManager.self) private var sessionManager
 
     /// 服务器资源快照(每 5s 经 exec 通道拉取,与 PTY 并存)
     @State private var stats: ServerInfo?
@@ -13,13 +15,7 @@ struct StatusBarView: View {
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             HStack(spacing: 8) {
-                Circle()
-                    .fill(stateColor)
-                    .frame(width: 6, height: 6)
-                Text(addressText)
-                    .foregroundStyle(.secondary)
-                Text(stateText(now: context.date))
-                    .foregroundStyle(.tertiary)
+                sessionInfo(now: context.date)
                 if !session.forwardStates.isEmpty {
                     separatorDot
                     Text(forwardText)
@@ -102,14 +98,56 @@ struct StatusBarView: View {
         Text("·").foregroundStyle(.quaternary)
     }
 
+    /// 左侧连接信息(状态点 + 地址 + 时长)。SSH 会话可点按开合服务器信息面板(⌘I);
+    /// 生产环境显示红色三角与红字(原标题胶囊的警戒职责)。
+    @ViewBuilder
+    private func sessionInfo(now: Date) -> some View {
+        let isProd = session.spec.isProduction
+        let cluster = HStack(spacing: 8) {
+            Circle()
+                .fill(stateColor)
+                .frame(width: 6, height: 6)
+            if isProd {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.red)
+            }
+            Text(addressText)
+                .foregroundStyle(isProd ? Color.red : Color.secondary)
+                .fontWeight(isProd ? .semibold : .regular)
+            Text(stateText(now: now))
+                .foregroundStyle(.tertiary)
+        }
+        if session.spec.isLocal {
+            cluster
+        } else {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    sessionManager.isInspectorVisible.toggle()
+                }
+            } label: {
+                cluster.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(
+                isProd
+                    ? "⚠️ 生产环境:\(addressText)"
+                    : "当前会话:\(addressText) —— 点按查看服务器信息(⌘I)"
+            )
+        }
+    }
+
     private var isConnected: Bool {
         if case .connected = session.state { return true }
         return false
     }
 
     private var addressText: String {
+        // 本地 Shell 没有 user@host,显示 shell 名(如 zsh)
+        if session.spec.isLocal {
+            return (LocalShell.resolvedShellPath() as NSString).lastPathComponent
+        }
         let port = session.spec.port == 22 ? "" : ":\(session.spec.port)"
-        return "\(session.spec.username)@\(session.spec.hostname)\(port)"
+        return "\(session.spec.username)@\(PrivacyMode.shared.mask(session.spec.hostname))\(port)"
     }
 
     private var stateColor: Color {
