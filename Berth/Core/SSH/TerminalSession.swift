@@ -45,6 +45,7 @@ final class TerminalSession: Identifiable {
         case missingStoredKey
         case authenticationGateFailed
         case notConnected
+        case localShellFailed(String)
 
         var errorDescription: String? {
             switch self {
@@ -56,6 +57,8 @@ final class TerminalSession: Identifiable {
                 return String(localized: "身份验证未通过,已取消连接。可在设置中关闭「使用密钥前要求 Touch ID」。")
             case .notConnected:
                 return String(localized: "未连接,无法打开 SFTP。")
+            case .localShellFailed(let path):
+                return String(localized: "无法启动本地 Shell:\(path) 不存在或不可执行。可在「设置 → 终端」修改 Shell 路径。")
             }
         }
     }
@@ -124,6 +127,9 @@ final class TerminalSession: Identifiable {
     @ObservationIgnored private var lastNotifiedAt: Date?
     /// 触发器匹配用的未完成行缓冲(按 \n 切分,剥离转义)
     @ObservationIgnored private var triggerLineBuffer = ""
+    /// 本地 Shell(spec.isLocal):子进程与回调桥。本地会话不使用任何 SSH 字段。
+    @ObservationIgnored private var localProcess: LocalProcess?
+    @ObservationIgnored private var localBridge: LocalShellBridge?
     /// 会话录制:输出剥离转义后追加到此文件
     @ObservationIgnored private var logHandle: FileHandle?
     /// 当前正在录制到的文件 URL(nil = 未录制)
@@ -171,25 +177,31 @@ final class TerminalSession: Identifiable {
         // 重连(此前连过)且开启了恢复工作目录 → 连上后自动 cd 回上次目录
         let restoreEnabled = UserDefaults.standard.object(forKey: SettingsKeys.restoreWorkingDir) as? Bool ?? true
         restoreDirOnConnect = (everConnected && restoreEnabled) ? lastRemoteDirectory : nil
-        state = .connecting(detail: String(localized: "正在连接 \(spec.hostname):\(String(spec.port))…"))
+        state = spec.isLocal
+            ? .connecting(detail: String(localized: "正在启动本地 Shell…"))
+            : .connecting(detail: String(localized: "正在连接 \(spec.hostname):\(String(spec.port))…"))
 
         sessionTask = Task {
             var disconnectReason: DisconnectReason
             var shellExited = false
             do {
-                do {
-                    try await runSession()
-                } catch {
-                    let blocked = LocalNetworkAccess.isLikelyBlocked(error, host: spec.hostname)
-                    DebugLog.append("session failed host=\(spec.hostname):\(spec.port) userInitiated=\(userInitiatedDisconnect) localNetBlocked=\(blocked) raw=\(String(describing: error))")
-                    // 局域网地址撞上 EHOSTUNREACH:多半是被 macOS 本地网络门禁挡了,
-                    // 而 NIO 的 BSD socket 不会触发授权请求。这时候才去要授权,
-                    // 拿到就重跑一次(TCP 都没建起来,重跑是干净的)
-                    guard !userInitiatedDisconnect,
-                          LocalNetworkAccess.isLikelyBlocked(error, host: spec.hostname),
-                          await LocalNetworkAccess.requestAccess(host: spec.hostname, port: spec.port)
-                    else { throw error }
-                    try await runSession()
+                if spec.isLocal {
+                    try await runLocalSession()
+                } else {
+                    do {
+                        try await runSession()
+                    } catch {
+                        let blocked = LocalNetworkAccess.isLikelyBlocked(error, host: spec.hostname)
+                        DebugLog.append("session failed host=\(spec.hostname):\(spec.port) userInitiated=\(userInitiatedDisconnect) localNetBlocked=\(blocked) raw=\(String(describing: error))")
+                        // 局域网地址撞上 EHOSTUNREACH:多半是被 macOS 本地网络门禁挡了,
+                        // 而 NIO 的 BSD socket 不会触发授权请求。这时候才去要授权,
+                        // 拿到就重跑一次(TCP 都没建起来,重跑是干净的)
+                        guard !userInitiatedDisconnect,
+                              LocalNetworkAccess.isLikelyBlocked(error, host: spec.hostname),
+                              await LocalNetworkAccess.requestAccess(host: spec.hostname, port: spec.port)
+                        else { throw error }
+                        try await runSession()
+                    }
                 }
                 // 干净返回(收到 exit-status 0 / 干净 EOF)= shell 正常退出
                 shellExited = !userInitiatedDisconnect
@@ -204,6 +216,9 @@ final class TerminalSession: Identifiable {
                     // 抛出的其实是通道 EOF/关闭(exit 与连接关闭竞速),视为 shell 退出
                     shellExited = true
                     disconnectReason = .remoteClosed
+                } else if spec.isLocal {
+                    // 本地会话只会抛自家的 SessionError(启动失败),不走 SSH 错误映射
+                    disconnectReason = .error((error as? LocalizedError)?.errorDescription ?? error.localizedDescription)
                 } else {
                     disconnectReason = .error(SSHErrorMapper.friendlyMessage(for: error, hostname: spec.hostname, port: spec.port, authMethod: spec.authMethod))
                 }
@@ -220,6 +235,12 @@ final class TerminalSession: Identifiable {
             self.client = nil
             self.connection = nil
             self.jumpClients = []
+            // 本地进程兜底:正常路径已在 runLocalSession 内退出/终止,这里防泄漏
+            if let process = self.localProcess {
+                if process.running { process.terminate() }
+                self.localProcess = nil
+            }
+            self.localBridge = nil
             sessionTask = nil
             if !orphanedJumps.isEmpty {
                 Task.detached {
@@ -502,6 +523,7 @@ final class TerminalSession: Identifiable {
     /// startingDirectory 非空时先 cd 过去再执行(用户终端所在目录,见 AIChatController)。
     /// 返回 nil = 会话未连接。5 分钟超时(防 tail -f 之类挂死)。
     func runAICommand(_ command: String, startingDirectory: String? = nil) async -> (output: String, exitCode: Int?)? {
+        if spec.isLocal { return await runLocalAICommand(command, startingDirectory: startingDirectory) }
         guard let client else { return nil }
         let marker = "__BERTH_AI_EXIT__"
         let script = Self.aiCommandScript(command, startingDirectory: startingDirectory, marker: marker)
@@ -989,40 +1011,214 @@ final class TerminalSession: Identifiable {
                 }
                 let bytes = Array(buffer.readableBytesView)
                 await MainActor.run {
-                    self.noteOutputForNotification()
-                    // OSC 133 命令边界/退出码。必须先把标记之前的字节喂进终端,
-                    // 再读光标行,才能拿到与标记对齐的 scroll-invariant 位置(否则记到旧位置)。
-                    var fed = 0
-                    for (event, offset) in self.osc133.scan(bytes[...]) {
-                        if offset > fed {
-                            self.terminalView.feed(byteArray: bytes[fed..<offset])
-                            fed = offset
-                        }
-                        switch event {
-                        case .commandStart:
-                            self.runningCommand = true
-                        case .outputStart:
-                            self.runningCommand = true
-                            self.commandStartedAt = Date()
-                            self.pendingOutputStart = self.currentScrollInvariantRow()
-                        case .commandEnd(let code):
-                            self.runningCommand = false
-                            self.lastExitCode = code
-                            self.lastCommandDuration = self.commandStartedAt.map { Date().timeIntervalSince($0) }
-                            self.commandStartedAt = nil
-                            self.recordCommandOutput(code: code)
-                        case .promptStart:
-                            self.recordCommandMark()
-                        }
-                    }
-                    if fed < bytes.count {
-                        self.terminalView.feed(byteArray: bytes[fed...])
-                    }
-                    self.matchTriggers(bytes: bytes)
-                    if self.logHandle != nil, let text = String(bytes: bytes, encoding: .utf8) {
-                        self.appendToLog(text)
-                    }
+                    self.ingest(bytes: bytes)
                 }
+            }
+        }
+    }
+
+    /// 输出统一入口(SSH 通道与本地 PTY 共用):OSC 133 扫描 → 喂终端 → 触发器/录制/通知
+    private func ingest(bytes: [UInt8]) {
+        noteOutputForNotification()
+        // OSC 133 命令边界/退出码。必须先把标记之前的字节喂进终端,
+        // 再读光标行,才能拿到与标记对齐的 scroll-invariant 位置(否则记到旧位置)。
+        var fed = 0
+        for (event, offset) in osc133.scan(bytes[...]) {
+            if offset > fed {
+                terminalView.feed(byteArray: bytes[fed..<offset])
+                fed = offset
+            }
+            switch event {
+            case .commandStart:
+                runningCommand = true
+            case .outputStart:
+                runningCommand = true
+                commandStartedAt = Date()
+                pendingOutputStart = currentScrollInvariantRow()
+            case .commandEnd(let code):
+                runningCommand = false
+                lastExitCode = code
+                lastCommandDuration = commandStartedAt.map { Date().timeIntervalSince($0) }
+                commandStartedAt = nil
+                recordCommandOutput(code: code)
+            case .promptStart:
+                recordCommandMark()
+            }
+        }
+        if fed < bytes.count {
+            terminalView.feed(byteArray: bytes[fed...])
+        }
+        matchTriggers(bytes: bytes)
+        if logHandle != nil, let text = String(bytes: bytes, encoding: .utf8) {
+            appendToLog(text)
+        }
+    }
+
+    // MARK: - 本地 Shell(spec.isLocal)
+
+    /// 本地会话:fork 本机 shell 挂到同一个 TerminalView,生命周期对齐 SSH 路径 ——
+    /// 正常退出(exit)→ 干净返回 → onShellExit 关 pane;任务取消(⌘W/断开)→ SIGTERM。
+    private func runLocalSession() async throws {
+        let shell = LocalShell.resolvedShellPath()
+        guard FileManager.default.isExecutableFile(atPath: shell) else {
+            throw SessionError.localShellFailed(shell)
+        }
+        let bridge = LocalShellBridge(session: self)
+        let process = LocalProcess(delegate: bridge)
+        localBridge = bridge
+        localProcess = process
+
+        var env = Terminal.getEnvironmentVariables(termName: "xterm-256color")
+        env.append("SHELL=\(shell)")
+        env.append("TERM_PROGRAM=Berth")
+        // 按 Terminal.app 惯例把 argv[0] 置为 "-zsh",让 shell 走登录初始化(zprofile 等)
+        let execName = "-" + (shell as NSString).lastPathComponent
+        process.startProcess(
+            executable: shell,
+            environment: env,
+            execName: execName,
+            currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
+        )
+        guard process.running else { throw SessionError.localShellFailed(shell) }
+
+        let (stream, continuation) = AsyncStream.makeStream(of: StdinEvent.self)
+        stdinWriter = continuation
+        state = .connected
+        connectedAt = Date()
+        everConnected = true
+        reconnectAttempt = 0
+        focusTerminal()
+
+        // 键入/resize 直接落到本地 PTY(与 SSH 路径共用 StdinEvent 流,广播/片段无感)
+        let stdinPump = Task {
+            for await event in stream {
+                switch event {
+                case .bytes(let bytes):
+                    process.send(data: bytes[...])
+                case .resize(let cols, let rows):
+                    var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
+                    _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: process.childfd, windowSize: &size)
+                }
+            }
+        }
+        defer { stdinPump.cancel() }
+
+        // 等待子进程退出;任务取消(用户断开/关 pane)时 SIGTERM 并立即收尾。
+        // terminate() 会取消 LocalProcess 的退出监视,所以取消路径要手动补发 fireTerminated。
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                bridge.whenTerminated { cont.resume() }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.localProcess?.terminate()
+                self?.localBridge?.fireTerminated()
+            }
+        }
+        try Task.checkCancellation()
+    }
+
+    /// AI 助手用(本地会话):独立子进程执行命令,不触碰用户的交互 shell。
+    /// 包装脚本与 SSH 版共用(stderr 合并、标记行取退出码);5 分钟超时。
+    private func runLocalAICommand(_ command: String, startingDirectory: String?) async -> (output: String, exitCode: Int?)? {
+        guard case .connected = state else { return nil }
+        let marker = "__BERTH_AI_EXIT__"
+        let script = Self.aiCommandScript(command, startingDirectory: startingDirectory, marker: marker)
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", script]
+        process.currentDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+        process.standardInput = FileHandle.nullDevice
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        // 后台队列边跑边收,避免子进程写满 64KB 管道缓冲后卡死
+        let collected = LockedDataBuffer()
+        pipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+            } else {
+                collected.append(data)
+            }
+        }
+
+        let watchdog = Task.detached { [weak process] in
+            try? await Task.sleep(for: .seconds(300))
+            process?.terminate()
+        }
+        defer { watchdog.cancel() }
+
+        let launched: Bool = await withCheckedContinuation { cont in
+            process.terminationHandler = { _ in cont.resume(returning: true) }
+            do {
+                try process.run()
+            } catch {
+                process.terminationHandler = nil
+                cont.resume(returning: false)
+            }
+        }
+        guard launched else {
+            return (String(localized: "命令执行失败:无法启动 /bin/sh"), nil)
+        }
+        // 给 readabilityHandler 一拍把尾部字节收完
+        try? await Task.sleep(for: .milliseconds(80))
+        pipe.fileHandleForReading.readabilityHandler = nil
+
+        var text = String(data: collected.snapshot, encoding: .utf8) ?? ""
+        var exitCode: Int?
+        if let range = text.range(of: "\n\(marker):", options: .backwards) {
+            let tail = text[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+            exitCode = Int(tail)
+            text = String(text[..<range.lowerBound])
+        }
+        return (text, exitCode)
+    }
+
+    /// LocalProcess 的回调桥。LocalProcess 在主队列投递数据/退出事件,这里转回
+    /// @MainActor 的会话;单独成类是因为 LocalProcessDelegate 是非隔离协议。
+    @MainActor
+    private final class LocalShellBridge: LocalProcessDelegate {
+        private weak var session: TerminalSession?
+        private var terminated = false
+        private var onTerminated: (() -> Void)?
+
+        init(session: TerminalSession) {
+            self.session = session
+        }
+
+        /// 注册退出回调;若进程已先一步退出则立即补发
+        func whenTerminated(_ handler: @escaping () -> Void) {
+            if terminated { handler() } else { onTerminated = handler }
+        }
+
+        /// 幂等:自然退出与主动 terminate 都汇聚到这里
+        func fireTerminated() {
+            guard !terminated else { return }
+            terminated = true
+            onTerminated?()
+            onTerminated = nil
+        }
+
+        nonisolated func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
+            MainActor.assumeIsolated { fireTerminated() }
+        }
+
+        nonisolated func dataReceived(slice: ArraySlice<UInt8>) {
+            MainActor.assumeIsolated { session?.ingest(bytes: Array(slice)) }
+        }
+
+        nonisolated func getWindowSize() -> winsize {
+            MainActor.assumeIsolated {
+                let term = session?.terminalView.getTerminal()
+                return winsize(
+                    ws_row: UInt16(term?.rows ?? 24),
+                    ws_col: UInt16(term?.cols ?? 80),
+                    ws_xpixel: 0,
+                    ws_ypixel: 0
+                )
             }
         }
     }
@@ -1191,5 +1387,23 @@ extension TerminalSession: TerminalViewDelegate {
         guard let url = URL(string: s), let scheme = url.scheme?.lowercased(),
               ["http", "https", "ftp", "mailto", "file"].contains(scheme) else { return }
         MainActor.assumeIsolated { NSWorkspace.shared.open(url) }
+    }
+}
+
+/// 跨队列收集子进程输出(Pipe 的 readabilityHandler 在后台队列回调)
+private final class LockedDataBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        data.append(chunk)
+        lock.unlock()
+    }
+
+    var snapshot: Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
     }
 }

@@ -59,6 +59,8 @@ struct HostSpec: Equatable, Sendable {
     var tagColorRaw: String = TagColor.none.rawValue
     /// 连接建立后自动执行的命令(每行一条)
     var startupCommands: String = ""
+    /// 本地 Shell 会话(不走 SSH,直接 fork 本机 shell)。macOS 专用;iOS 不提供入口。
+    var isLocal: Bool = false
 
     init(
         hostID: UUID,
@@ -110,6 +112,27 @@ struct HostSpec: Equatable, Sendable {
             .filter(\.enabled)
             .sorted { $0.sortOrder < $1.sortOrder }
             .map(PortForwardSpec.init)
+    }
+
+    // MARK: - 本地 Shell
+
+    /// 本地 Shell 会话的固定 hostID(哨兵值):不对应任何 Host 记录,
+    /// 用于标签持久化/恢复时识别本地会话,不会与真实主机冲突。
+    static let localShellHostID = UUID(uuidString: "B0C41000-0000-4000-8000-4C6F63616C21")!
+
+    /// 本地 Shell 的会话快照:hostname/port/authMethod 均为占位,连接层按 isLocal 分流。
+    static func localShell() -> HostSpec {
+        var spec = HostSpec(
+            hostID: localShellHostID,
+            label: String(localized: "本地 Shell"),
+            hostname: "localhost",
+            port: 0,
+            username: NSUserName(),
+            authMethod: .password,
+            privateKeyPath: nil
+        )
+        spec.isLocal = true
+        return spec
     }
 
     /// 递归解析 host.jumpHostID → 完整跳板链(由外到内)。防环。

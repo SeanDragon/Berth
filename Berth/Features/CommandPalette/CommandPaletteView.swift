@@ -39,6 +39,8 @@ struct CommandPaletteView: View {
     private var commands: [PaletteCommand] {
         let m = sessionManager
         let hasSession = m.selected != nil
+        // 本地 Shell 会话没有 SFTP/服务器信息(纯 SSH 能力)
+        let isLocalSession = m.selected?.spec.isLocal == true
         var list: [PaletteCommand] = [
             PaletteCommand(id: "quickconnect", title: String(localized: "快速连接…"), subtitle: "⌘K", icon: "bolt.fill") {
                 QuickConnectController.shared.toggle()
@@ -48,6 +50,9 @@ struct CommandPaletteView: View {
             },
             PaletteCommand(id: "split-v", title: String(localized: "上下分屏"), subtitle: "⌘⇧D", icon: "rectangle.split.1x2", isEnabled: hasSession) {
                 m.splitFocused(axis: .vertical)
+            },
+            PaletteCommand(id: "split-local", title: String(localized: "左右分屏(本地 Shell)"), subtitle: "⌥⌘L", icon: "terminal", isEnabled: hasSession) {
+                m.splitFocusedLocalShell(axis: .horizontal)
             },
             PaletteCommand(id: "close-pane", title: String(localized: "关闭当前分屏"), subtitle: "⌘W", icon: "xmark.rectangle", isEnabled: hasSession) {
                 m.requestCloseCurrent()
@@ -64,10 +69,13 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "dup", title: String(localized: "复制当前连接为新标签"), subtitle: "⌘T", icon: "plus.square.on.square", isEnabled: hasSession) {
                 m.duplicateCurrent()
             },
-            PaletteCommand(id: "sftp", title: m.isSFTPVisible ? String(localized: "关闭 SFTP 文件面板") : String(localized: "打开 SFTP 文件面板"), subtitle: "⌘⇧F", icon: "folder", isEnabled: hasSession) {
+            PaletteCommand(id: "local-shell", title: String(localized: "打开本地 Shell"), subtitle: "⇧⌘T", icon: "terminal") {
+                m.open(spec: .localShell())
+            },
+            PaletteCommand(id: "sftp", title: m.isSFTPVisible ? String(localized: "关闭 SFTP 文件面板") : String(localized: "打开 SFTP 文件面板"), subtitle: "⌘⇧F", icon: "folder", isEnabled: hasSession && !isLocalSession) {
                 m.isSFTPVisible.toggle()
             },
-            PaletteCommand(id: "inspector", title: m.isInspectorVisible ? String(localized: "关闭服务器信息面板") : String(localized: "打开服务器信息面板"), subtitle: "⌘I", icon: "sidebar.right", isEnabled: hasSession) {
+            PaletteCommand(id: "inspector", title: m.isInspectorVisible ? String(localized: "关闭服务器信息面板") : String(localized: "打开服务器信息面板"), subtitle: "⌘I", icon: "sidebar.right", isEnabled: hasSession && !isLocalSession) {
                 m.isInspectorVisible.toggle()
             },
             PaletteCommand(id: "find", title: String(localized: "在终端中查找"), subtitle: "⌘F", icon: "magnifyingglass", isEnabled: hasSession) {
@@ -198,8 +206,8 @@ struct CommandPaletteView: View {
                 Circle().fill(host.tagColor.color).frame(width: 8, height: 8)
                     .opacity(host.tagColor == .none ? 0.2 : 1)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(host.label)
-                    Text(host.address).font(.caption).foregroundStyle(.secondary)
+                    Text(PrivacyMode.shared.maskHost(in: host.label, hostname: host.hostname))
+                    Text(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname)).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Text("连接").font(.caption2).foregroundStyle(.tertiary)

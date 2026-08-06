@@ -121,11 +121,23 @@ final class SessionManager {
 
     /// ⌘D / ⌘⇧D / 右键:在当前聚焦 pane 上再分出一个同主机会话(复用连接)。每次都新增,支持嵌套。
     func splitFocused(axis: SplitAxis) {
-        guard let tab = selectedTab, let current = selected else { return }
+        guard let current = selected else { return }
         let secondary = TerminalSession(spec: current.spec)
         secondary.transientPassword = current.transientPassword
         secondary.transientPassphrase = current.transientPassphrase
         if let connection = current.liveConnection { secondary.prepareToBorrow(connection) }
+        insertSplit(secondary, axis: axis)
+    }
+
+    /// 混合分屏:在当前聚焦 pane 旁分出一个本地 Shell(SSH 会话旁跑 scp/kubectl 等本地命令)
+    func splitFocusedLocalShell(axis: SplitAxis) {
+        guard selected != nil else { return }
+        insertSplit(TerminalSession(spec: .localShell()), axis: axis)
+    }
+
+    /// 把新会话作为聚焦 pane 的兄弟插入分屏树并拨号
+    private func insertSplit(_ secondary: TerminalSession, axis: SplitAxis) {
+        guard let tab = selectedTab, let current = selected else { return }
         secondary.onShellExit = { [weak self, weak secondary] in
             guard let self, let secondary else { return }
             self.closePane(secondary)
@@ -402,14 +414,18 @@ final class SessionManager {
         let context = ModelContext(container)
         let stored = (try? context.fetch(FetchDescriptor<Host>())) ?? []
         let hosts = stored + SSHConfigService.shared.mirrorHosts
-        guard !hosts.isEmpty else { return }
         // 只有第一个标签自动拨号,其余等切过去再连:一次性把上次的标签全连起来,
         // 会让 known_hosts 指纹确认弹窗排队(后台标签的弹窗还压根显示不出来,
         // 会话就卡在「等待主机密钥确认」),连不上的主机也会一次涌出一片错误横幅。
         var isFirst = true
         for idString in ids {
-            guard let uuid = UUID(uuidString: idString),
-                  let host = hosts.first(where: { $0.id == uuid }) else { continue }
+            guard let uuid = UUID(uuidString: idString) else { continue }
+            if uuid == HostSpec.localShellHostID {
+                open(spec: .localShell(), autoConnect: isFirst)
+                isFirst = false
+                continue
+            }
+            guard let host = hosts.first(where: { $0.id == uuid }) else { continue }
             open(spec: HostSpec.resolve(host, in: hosts), autoConnect: isFirst)
             isFirst = false
         }

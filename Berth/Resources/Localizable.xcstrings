@@ -857,6 +857,16 @@
         }
       }
     },
+    "Shell 路径": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shell Path"
+          }
+        }
+      }
+    },
     "Snazzy 糖果": {
       "localizations": {
         "en": {
@@ -1128,6 +1138,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Split Down"
+          }
+        }
+      }
+    },
+    "上下分屏(本地 Shell)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split Vertically (Local Shell)"
           }
         }
       }
@@ -2012,6 +2032,16 @@
         }
       }
     },
+    "关闭标签页": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Tab"
+          }
+        }
+      }
+    },
     "关闭标签页?": {
       "localizations": {
         "en": {
@@ -2489,6 +2519,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Command failed: %@"
+          }
+        }
+      }
+    },
+    "命令执行失败:无法启动 /bin/sh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command failed: unable to launch /bin/sh"
           }
         }
       }
@@ -3173,6 +3213,16 @@
         }
       }
     },
+    "左右分屏(本地 Shell)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Split Horizontally (Local Shell)"
+          }
+        }
+      }
+    },
     "已 vendor(Joannis fork),含 Berth 补丁": {
       "localizations": {
         "en": {
@@ -3543,6 +3593,16 @@
         }
       }
     },
+    "恢复默认名称": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Restore Default Name"
+          }
+        }
+      }
+    },
     "我已核实,更新并连接": {
       "localizations": {
         "en": {
@@ -3629,6 +3689,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Open Server Info Panel"
+          }
+        }
+      }
+    },
+    "打开本地 Shell": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Local Shell"
           }
         }
       }
@@ -3893,12 +3963,32 @@
         }
       }
     },
+    "新建本地 Shell": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Local Shell"
+          }
+        }
+      }
+    },
     "新建标签页(复制当前连接)": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "New Tab (duplicate current connection)"
+          }
+        }
+      }
+    },
+    "新建标签页(本地 Shell / 快速连接)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New tab (local shell / quick connect)"
           }
         }
       }
@@ -4020,6 +4110,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unable to create socket"
+          }
+        }
+      }
+    },
+    "无法启动本地 Shell:%@ 不存在或不可执行。可在「设置 → 终端」修改 Shell 路径。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Failed to start local shell: %@ does not exist or is not executable. You can change the shell path in Settings → Terminal."
           }
         }
       }
@@ -4394,6 +4494,36 @@
         }
       }
     },
+    "本地 Shell": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local Shell"
+          }
+        }
+      }
+    },
+    "本地 Shell 标签页(⇧⌘T / ⌘K)所用的 shell。留空使用登录 shell;对新开的本地会话生效。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shell used by local shell tabs (⇧⌘T / ⌘K). Leave empty to use your login shell; applies to newly opened local sessions."
+          }
+        }
+      }
+    },
+    "本地 Shell:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Local shell: %@"
+          }
+        }
+      }
+    },
     "本地无待同步改动": {
       "localizations": {
         "en": {
@@ -4700,6 +4830,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Invalid regular expression"
+          }
+        }
+      }
+    },
+    "正在启动本地 Shell…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Starting local shell…"
           }
         }
       }
@@ -5884,6 +6024,16 @@
         }
       }
     },
+    "该分屏有正在运行的本地 Shell。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This pane has a running local shell."
+          }
+        }
+      }
+    },
     "该分屏有活跃的 SSH 连接。": {
       "localizations": {
         "en": {
@@ -5900,6 +6050,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This key type isn't supported for agent authentication yet (ed25519 / RSA supported)."
+          }
+        }
+      }
+    },
+    "该标签页含正在运行的本地 Shell(可能有多个分屏)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This tab has running local shells (possibly multiple panes)."
           }
         }
       }
@@ -6684,6 +6844,16 @@
         }
       }
     },
+    "重命名标签": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Tab"
+          }
+        }
+      }
+    },
     "重连后自动 cd 回上次工作目录(需命令集成)": {
       "localizations": {
         "en": {
@@ -6710,6 +6880,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alibaba Bailian (Qwen)"
+          }
+        }
+      }
+    },
+    "隐私模式:打码所有主机地址(录屏用)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy mode: mask all host addresses (for screen recording)"
+          }
+        }
+      }
+    },
+    "隐私模式已开启:主机地址已打码,点击恢复": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy mode on: host addresses are masked — click to reveal"
           }
         }
       }

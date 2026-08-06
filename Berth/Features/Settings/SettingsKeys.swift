@@ -23,6 +23,8 @@ enum SettingsKeys {
     static let probeReachability = "app.probeReachability"
     /// 演示模式:主机列表隐藏真实主机,显示内置示例(录屏/截图防泄漏)
     static let demoMode = "app.demoMode"
+    /// 隐私模式:界面上的主机地址/IP 打码,再点一下恢复(录屏用)
+    static let privacyMode = "app.privacyMode"
     /// AI 助手:模型名(空 = 默认 claude-opus-5)
     static let aiModel = "ai.model"
     /// AI 助手:API 地址(空 = https://api.anthropic.com;兼容自建中转)
@@ -31,6 +33,8 @@ enum SettingsKeys {
     static let aiAutoRunCommands = "ai.autoRunCommands"
     /// AI 助手:请求格式(anthropic / openAI 兼容)
     static let aiAPIFormat = "ai.apiFormat"
+    /// 本地 Shell 路径(空 = 登录 shell;macOS 本地终端会话用)
+    static let localShellPath = "terminal.localShellPath"
     /// 自动检查更新(GitHub Releases API,默认开)
     static let autoCheckUpdates = "app.autoCheckUpdates"
     /// 用户选择跳过的版本号(该版本不再提示,新版本会重新提示)

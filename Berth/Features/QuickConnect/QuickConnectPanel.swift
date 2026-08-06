@@ -22,11 +22,13 @@ struct QuickConnectPanel: View {
     private enum Row: Identifiable {
         case host(Host, score: Int)
         case direct(ParsedSSHTarget)
+        case localShell
 
         var id: String {
             switch self {
             case .host(let host, _): return host.id.uuidString
             case .direct: return "direct"
+            case .localShell: return "local-shell"
             }
         }
     }
@@ -36,11 +38,12 @@ struct QuickConnectPanel: View {
         var result: [Row] = []
 
         if trimmed.isEmpty {
-            // 空查询:按最近连接排序给出常用主机
+            // 空查询:按最近连接排序给出常用主机,本地 Shell 常驻末位
             let recent = hosts
                 .sorted { ($0.lastConnectedAt ?? .distantPast) > ($1.lastConnectedAt ?? .distantPast) }
                 .prefix(8)
             result = recent.map { .host($0, score: 0) }
+            result.append(.localShell)
         } else {
             let scored: [(Host, Int)] = hosts.compactMap { host in
                 let fields = [host.label, host.hostname, host.username, host.group?.name]
@@ -52,6 +55,11 @@ struct QuickConnectPanel: View {
                 .prefix(8)
                 .map { .host($0.0, score: $0.1) }
 
+            let localFields = [String(localized: "本地 Shell"), "local shell", "terminal",
+                               (LocalShell.resolvedShellPath() as NSString).lastPathComponent]
+            if FuzzyMatcher.bestScore(query: trimmed, fields: localFields) != nil {
+                result.append(.localShell)
+            }
             if let parsed = SSHCommandParser.parse(trimmed), parsed.username != nil {
                 result.append(.direct(parsed))
             }
@@ -121,8 +129,8 @@ struct QuickConnectPanel: View {
                     .frame(width: 8, height: 8)
                     .opacity(host.tagColor == .none ? 0.15 : 1)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(host.label)
-                    Text(host.address)
+                    Text(PrivacyMode.shared.maskHost(in: host.label, hostname: host.hostname))
+                    Text(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -143,6 +151,16 @@ struct QuickConnectPanel: View {
                 Text("回车")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+            case .localShell:
+                Image(systemName: "terminal")
+                    .foregroundStyle(.tint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("本地 Shell")
+                    Text(LocalShell.resolvedShellPath())
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
             }
         }
         .padding(.horizontal, 12)
@@ -164,6 +182,9 @@ struct QuickConnectPanel: View {
             controller.dismiss()
         case .direct(let target):
             controller.directConnectRequest = DirectConnectRequest(target: target)
+            controller.dismiss()
+        case .localShell:
+            sessionManager.open(spec: .localShell())
             controller.dismiss()
         }
     }

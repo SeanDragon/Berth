@@ -1,0 +1,28 @@
+import AppKit
+
+/// 窗口自截图:BERTH_WINDOW_SNAPSHOT=<png 路径> 时,启动后延时把主窗口(含标题栏)渲染成 PNG。
+/// 走 NSView 自身的 cacheDisplay(app 画自己的视图层级),无需屏幕录制权限;
+/// BERTH_SNAPSHOT_OPEN_LOCAL=1 可先开一个本地 Shell 再截。给自动化验收看界面用。
+@MainActor
+enum WindowSnapshot {
+    static func runIfRequested() async {
+        let env = ProcessInfo.processInfo.environment
+        guard let path = env["BERTH_WINDOW_SNAPSHOT"] else { return }
+        // 值即要开的本地 Shell 数量("1" 开一个,"5" 开五个,方便截多标签布局)
+        if let count = Int(env["BERTH_SNAPSHOT_OPEN_LOCAL"] ?? ""), count > 0 {
+            try? await Task.sleep(for: .seconds(1))
+            for _ in 0..<count {
+                _ = SessionManager.shared.open(spec: .localShell())
+            }
+        }
+        let delay = Double(env["BERTH_SNAPSHOT_DELAY"] ?? "3") ?? 3
+        try? await Task.sleep(for: .seconds(delay))
+        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+              let frameView = window.contentView?.superview ?? window.contentView else { return }
+        let bounds = frameView.bounds
+        guard let rep = frameView.bitmapImageRepForCachingDisplay(in: bounds) else { return }
+        frameView.cacheDisplay(in: bounds, to: rep)
+        guard let png = rep.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: URL(fileURLWithPath: path))
+    }
+}

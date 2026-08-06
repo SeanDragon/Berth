@@ -24,7 +24,7 @@ struct MenuBarExtraView: View {
                     } label: {
                         // 菜单会把模板符号强制单色,自绘非模板圆点保留颜色且尺寸可控
                         Label {
-                            Text(session.spec.label)
+                            Text(PrivacyMode.shared.maskHost(in: session.spec.label, hostname: session.spec.hostname))
                         } icon: {
                             Image(nsImage: Self.dotImage(for: session))
                         }
@@ -41,6 +41,12 @@ struct MenuBarExtraView: View {
                 } label: {
                     Label(host.label, systemImage: "bolt")
                 }
+            }
+            Button {
+                NSApp.activate(ignoringOtherApps: true)
+                _ = SessionManager.shared.open(spec: .localShell())
+            } label: {
+                Label(String(localized: "本地 Shell"), systemImage: "terminal")
             }
         }
         Divider()

@@ -25,6 +25,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.aiAutoRunCommands) private var aiAutoRun = false
     @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
     @AppStorage(SettingsKeys.autoCheckUpdates) private var autoCheckUpdates = true
+    @AppStorage(SettingsKeys.localShellPath) private var localShellPath = ""
     @State private var aiProviderID = AIProvider.all[0].id
     @State private var aiModelIsCustom = false
     @State private var tab: SettingsTab = .terminal
@@ -142,6 +143,13 @@ struct SettingsView: View {
             }
             .onChange(of: cursorShape) { _, _ in CursorPrefs.applyToAllSessions() }
             .onChange(of: cursorBlink) { _, _ in CursorPrefs.applyToAllSessions() }
+            Section("本地 Shell") {
+                TextField("Shell 路径", text: $localShellPath, prompt: Text(verbatim: LocalShell.loginShell()))
+                    .autocorrectionDisabled()
+                Text("本地 Shell 标签页(⇧⌘T / ⌘K)所用的 shell。留空使用登录 shell;对新开的本地会话生效。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
     }
 
     @ViewBuilder

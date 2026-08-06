@@ -48,6 +48,19 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
         vItem.image = NSImage(systemSymbolName: "rectangle.split.1x2", accessibilityDescription: nil)
         menu.addItem(vItem)
 
+        // 混合分屏:SSH 会话旁边跑本地命令(scp/rsync/kubectl)
+        let localHItem = NSMenuItem(title: String(localized: "左右分屏(本地 Shell)"), action: #selector(berthSplitLocalHorizontal), keyEquivalent: "l")
+        localHItem.keyEquivalentModifierMask = [.command, .option]
+        localHItem.target = self
+        localHItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+        menu.addItem(localHItem)
+
+        let localVItem = NSMenuItem(title: String(localized: "上下分屏(本地 Shell)"), action: #selector(berthSplitLocalVertical), keyEquivalent: "l")
+        localVItem.keyEquivalentModifierMask = [.command, .option, .shift]
+        localVItem.target = self
+        localVItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
+        menu.addItem(localVItem)
+
         let closePaneItem = NSMenuItem(title: String(localized: "关闭此分屏"), action: #selector(berthClosePane), keyEquivalent: "")
         closePaneItem.target = self
         closePaneItem.image = NSImage(systemSymbolName: "xmark.rectangle", accessibilityDescription: nil)
@@ -97,6 +110,14 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
 
     @objc private func berthSplitVertical() {
         MainActor.assumeIsolated { SessionManager.shared.splitFocused(axis: .vertical) }
+    }
+
+    @objc private func berthSplitLocalHorizontal() {
+        MainActor.assumeIsolated { SessionManager.shared.splitFocusedLocalShell(axis: .horizontal) }
+    }
+
+    @objc private func berthSplitLocalVertical() {
+        MainActor.assumeIsolated { SessionManager.shared.splitFocusedLocalShell(axis: .vertical) }
     }
 
     @objc private func berthClosePane() {

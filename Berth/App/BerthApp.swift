@@ -37,6 +37,8 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runDropUploadIfRequested()
                     await M2AcceptanceTest.runAICommandIfRequested(container: container)
                     await M2AcceptanceTest.runAIChatIfRequested(container: container)
+                    await LocalShellAcceptanceTest.runIfRequested()
+                    await WindowSnapshot.runIfRequested()
                     await DemoScene.runIfRequested(container: container)
                     // 自动化验收/临时库环境不做会话恢复,也不发检查更新请求
                     let env = ProcessInfo.processInfo.environment
@@ -144,6 +146,11 @@ struct TerminalCommands: Commands {
             }
             .keyboardShortcut("t", modifiers: .command)
 
+            Button("新建本地 Shell") {
+                SessionManager.shared.open(spec: .localShell())
+            }
+            .keyboardShortcut("t", modifiers: [.command, .shift])
+
             Button("关闭 pane / 标签页") {
                 let manager = SessionManager.shared
                 if manager.selected != nil {
@@ -191,11 +198,13 @@ struct TerminalCommands: Commands {
                 SessionManager.shared.isInspectorVisible.toggle()
             }
             .keyboardShortcut("i", modifiers: .command)
+            .disabled(SessionManager.shared.selected?.spec.isLocal == true)
 
             Button("SFTP 文件面板") {
                 SessionManager.shared.isSFTPVisible.toggle()
             }
             .keyboardShortcut("f", modifiers: [.command, .shift])
+            .disabled(SessionManager.shared.selected?.spec.isLocal == true)
 
             Button("左右分屏") {
                 SessionManager.shared.splitFocused(axis: .horizontal)
@@ -206,6 +215,16 @@ struct TerminalCommands: Commands {
                 SessionManager.shared.splitFocused(axis: .vertical)
             }
             .keyboardShortcut("d", modifiers: [.command, .shift])
+
+            Button("左右分屏(本地 Shell)") {
+                SessionManager.shared.splitFocusedLocalShell(axis: .horizontal)
+            }
+            .keyboardShortcut("l", modifiers: [.command, .option])
+
+            Button("上下分屏(本地 Shell)") {
+                SessionManager.shared.splitFocusedLocalShell(axis: .vertical)
+            }
+            .keyboardShortcut("l", modifiers: [.command, .option, .shift])
 
             Button("广播输入到所有分屏") {
                 SessionManager.shared.toggleBroadcast()
