@@ -234,6 +234,15 @@ struct SidebarView: View {
                     UpdateChecker.shared.openReleasePage(update)
                 }
             }
+            PanelIconButton(
+                symbol: PrivacyMode.shared.isOn ? "eye.slash.fill" : "eye.slash",
+                help: PrivacyMode.shared.isOn
+                    ? String(localized: "隐私模式已开启:主机地址已打码,点击恢复")
+                    : String(localized: "隐私模式:打码所有主机地址(录屏用)"),
+                tint: PrivacyMode.shared.isOn ? ThemeStore.shared.current.accentColor : nil
+            ) {
+                PrivacyMode.shared.isOn.toggle()
+            }
             PanelIconButton(symbol: "paintpalette", help: String(localized: "终端配色")) { isThemePanelPresented.toggle() }
                 .popover(isPresented: $isThemePanelPresented, arrowEdge: .top) {
                     ThemePanelView()
@@ -460,11 +469,11 @@ private struct HostRow: View {
                     radius: 3
                 )
             VStack(alignment: .leading, spacing: 2) {
-                Text(host.label)
+                Text(PrivacyMode.shared.maskHost(in: host.label, hostname: host.hostname))
                     .font(.system(size: 13.5, weight: .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text(host.address)
+                Text(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname))
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -487,7 +496,7 @@ private struct HostRow: View {
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
-        .help("\(host.address)\(host.lastConnectedAt.map { String(localized: " · 最近连接 ") + $0.formatted(.relative(presentation: .named)) } ?? "")")
+        .help("\(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname))\(host.lastConnectedAt.map { String(localized: " · 最近连接 ") + $0.formatted(.relative(presentation: .named)) } ?? "")")
     }
 }
 

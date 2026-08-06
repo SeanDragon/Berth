@@ -53,7 +53,7 @@ struct ServerInfoInspector: View {
 
     private var connectionSection: some View {
         section(String(localized: "连接")) {
-            infoRow(String(localized: "主机"), session.spec.hostname)
+            infoRow(String(localized: "主机"), PrivacyMode.shared.mask(session.spec.hostname))
             infoRow(String(localized: "端口"), String(session.spec.port))
             infoRow(String(localized: "用户"), session.spec.username)
             infoRow(String(localized: "认证"), authLabel)
@@ -157,7 +157,7 @@ struct ServerInfoInspector: View {
         if let info, !info.textRows.isEmpty {
             section(String(localized: "服务器")) {
                 if !info.hostname.isEmpty {
-                    infoRow(String(localized: "主机名"), info.hostname)
+                    infoRow(String(localized: "主机名"), PrivacyMode.shared.mask(info.hostname))
                 }
                 ForEach(info.textRows, id: \.0) { row in
                     infoRow(row.0, row.1)
