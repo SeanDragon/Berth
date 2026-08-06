@@ -442,14 +442,14 @@ private struct TerminalTabChip: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        .background(
-            Capsule()
-                .fill(isSelected ? ThemeStore.shared.current.accentSoft : (isHovering ? Color.primary.opacity(0.06) : .clear))
-        )
-        .overlay(
-            Capsule()
-                .stroke(isSelected ? ThemeStore.shared.current.accentColor.opacity(0.35) : .clear, lineWidth: 1)
-        )
+        // 选中 = 浮起材质(与侧栏选中行同一块料),不再用强调色水洗
+        .background {
+            if isSelected {
+                RaisedCapsule()
+            } else if isHovering {
+                Capsule().fill(Color.primary.opacity(0.05))
+            }
+        }
         .foregroundStyle(isSelected ? .primary : .secondary)
         .contentShape(Capsule())
         .animation(.easeOut(duration: 0.12), value: isHovering)
@@ -458,7 +458,7 @@ private struct TerminalTabChip: View {
         // 尾部让出 × 按钮的响应区
         .overlay {
             if !isRenaming {
-                ChipMouseLayer(onPress: select, onDoubleClick: startRename)
+                PressMouseLayer(onPress: select, onDoubleClick: startRename)
                     .padding(.trailing, (isHovering || isSelected) ? 26 : 0)
             }
         }
@@ -494,47 +494,6 @@ private struct TerminalTabChip: View {
         case .connected: return .green
         case .disconnected(let reason):
             return reason == .userInitiated ? .gray : .red
-        }
-    }
-}
-
-/// chip 的 AppKit 事件层:标题栏里的 SwiftUI 手势在 macOS 15 抢不过窗口拖拽,
-/// 用真 NSView 接管 —— 按下即选中(无双击判定延迟)、双击改名、掐断标题栏拖窗。
-private struct ChipMouseLayer: NSViewRepresentable {
-    let onPress: () -> Void
-    let onDoubleClick: () -> Void
-
-    func makeNSView(context: Context) -> MouseView {
-        let view = MouseView()
-        update(view)
-        return view
-    }
-
-    func updateNSView(_ view: MouseView, context: Context) {
-        update(view)
-    }
-
-    private func update(_ view: MouseView) {
-        view.onPress = onPress
-        view.onDoubleClick = onDoubleClick
-    }
-
-    final class MouseView: NSView {
-        var onPress: (() -> Void)?
-        var onDoubleClick: (() -> Void)?
-
-        override var mouseDownCanMoveWindow: Bool { false }
-        /// 后台窗口点标签一击即选(原生标签栏行为),不用先点一下激活窗口
-        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-        /// 自己不出菜单:返回 nil 让右键沿响应链交给 SwiftUI 的 .contextMenu
-        override func menu(for event: NSEvent) -> NSMenu? { nil }
-
-        override func mouseDown(with event: NSEvent) {
-            if event.clickCount == 2 {
-                onDoubleClick?()
-            } else {
-                onPress?()  // 首击已选中,连击改名正好落在已选中的标签上
-            }
         }
     }
 }

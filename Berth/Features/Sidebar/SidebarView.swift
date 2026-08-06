@@ -151,7 +151,7 @@ struct SidebarView: View {
 
     private var hostList: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 1) {
+            LazyVStack(alignment: .leading, spacing: 2) {
                 if visibleHosts.isEmpty {
                     Text("没有匹配的主机")
                         .font(.caption)
@@ -165,13 +165,14 @@ struct SidebarView: View {
                             isSelected: selectedHostID == host.id,
                             theme: theme
                         )
-                        .onTapGesture { activate(host) }
+                        // 按下即选中(AppKit 层,无手势判定延迟);右键仍走 .contextMenu
+                        .overlay { PressMouseLayer(onPress: { activate(host) }) }
                         .contextMenu { hostMenu(host) }
                     }
                 }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
         .focusable()
         .focusEffectDisabled()
@@ -428,7 +429,8 @@ struct SidebarView: View {
     }
 }
 
-/// 主机行:状态点 + 标题 + user@host 副标题,config 镜像带文档角标
+/// 主机行(Termite 同款设计语言):图标列 + 13pt 标题 + 10pt 等宽副标题,
+/// 尾部状态点(连接态 > 可达性 > 标签色);选中 = 浮起材质,不用强调色水洗
 private struct HostRow: View {
     let host: Host
     var isSelected = false
@@ -438,44 +440,19 @@ private struct HostRow: View {
     @State private var hovering = false
     @State private var reachability = HostReachability.shared
 
-    private var dotColor: Color {
-        switch sessionManager.liveState(for: host.id) {
-        case .connected: return .green
-        case .connecting: return .yellow
-        case .none:
-            // 未连接时:若开启探测且有结果,用可达性着色;否则回落标签色/灰
-            switch reachability.statuses[host.id] {
-            case .reachable: return Color.green.opacity(0.5)
-            case .unreachable: return Color.red.opacity(0.4)
-            case .unknown, nil:
-                return host.tagColor == .none ? Color.gray.opacity(0.18) : host.tagColor.color.opacity(0.45)
-            }
-        }
-    }
-
     var body: some View {
         HStack(spacing: 8) {
+            // Finder 式图标列:固定宽度对齐成列
             OSBadge(osName: host.osName)
-            RoundedRectangle(cornerRadius: 1.5)
-                .fill(dotColor)
-                .frame(width: 3, height: 26)
-                .shadow(
-                    color: {
-                        if case .connected = sessionManager.liveState(for: host.id) {
-                            return Color.green.opacity(0.6)
-                        }
-                        return .clear
-                    }(),
-                    radius: 3
-                )
-            VStack(alignment: .leading, spacing: 2) {
+                .frame(width: 20)
+            VStack(alignment: .leading, spacing: 1.5) {
                 Text(PrivacyMode.shared.maskHost(in: host.label, hostname: host.hostname))
-                    .font(.system(size: 13.5, weight: .medium))
+                    .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname))
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -486,17 +463,48 @@ private struct HostRow: View {
                     .foregroundStyle(.quaternary)
                     .help("来自 ~/.ssh/config(只读)")
             }
+            statusDot
         }
         .padding(.vertical, 5)
-        .padding(.horizontal, 10)
-        .background(
-            Capsule()
-                .fill(isSelected ? theme.accentSoft : (hovering ? Color.primary.opacity(0.05) : .clear))
-        )
-        .contentShape(Rectangle())
+        .padding(.horizontal, 8)
+        // 选中 = 浮起(与标题栏选中标签同一块材质);悬停只给 6% 底确认目标形状
+        .background {
+            if isSelected {
+                RaisedCapsule()
+            } else if hovering {
+                Capsule().fill(Color.primary.opacity(0.06))
+            }
+        }
+        .foregroundStyle(isSelected ? .primary : .secondary)
+        .contentShape(Capsule())
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
         .help("\(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname))\(host.lastConnectedAt.map { String(localized: " · 最近连接 ") + $0.formatted(.relative(presentation: .named)) } ?? "")")
+    }
+
+    /// 尾部状态点:连接态 > 可达性 > 标签色;全无信息时不显示,列表保持安静
+    @ViewBuilder
+    private var statusDot: some View {
+        switch sessionManager.liveState(for: host.id) {
+        case .connected:
+            Circle().fill(Color.green)
+                .frame(width: 6, height: 6)
+                .shadow(color: Color.green.opacity(0.6), radius: 3)
+        case .connecting:
+            Circle().fill(Color.yellow)
+                .frame(width: 6, height: 6)
+        case .none:
+            switch reachability.statuses[host.id] {
+            case .reachable:
+                Circle().fill(Color.green.opacity(0.5)).frame(width: 5, height: 5)
+            case .unreachable:
+                Circle().fill(Color.red.opacity(0.45)).frame(width: 5, height: 5)
+            case .unknown, nil:
+                if host.tagColor != .none {
+                    Circle().fill(host.tagColor.color.opacity(0.6)).frame(width: 5, height: 5)
+                }
+            }
+        }
     }
 }
 
@@ -515,9 +523,10 @@ private struct SettingsIconLink: View {
                     Circle()
                         .fill(hovering ? Color.primary.opacity(0.08) : .clear)
                 )
+                .scaleEffect(hovering ? 1.06 : 1)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableIconStyle())
         .foregroundStyle(.secondary)
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
@@ -533,7 +542,7 @@ private struct RowHover: ViewModifier {
         content
             .background(
                 Capsule()
-                    .fill(hovering ? Color.primary.opacity(0.05) : .clear)
+                    .fill(hovering ? Color.primary.opacity(0.06) : .clear)
             )
             .animation(.easeOut(duration: 0.12), value: hovering)
             .onHover { hovering = $0 }

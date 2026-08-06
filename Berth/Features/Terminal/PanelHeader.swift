@@ -21,6 +21,7 @@ struct PanelHeader<Actions: View>: View {
 }
 
 /// 面板头部图标按钮:统一 24pt 命中区、12pt 图标、悬停底色。
+/// 悬停轻微浮起(1.06)+ 按下回缩(0.88),与「选中 = 浮起」同一套物理语言。
 struct PanelIconButton: View {
     let symbol: String
     let help: String
@@ -45,12 +46,91 @@ struct PanelIconButton: View {
                     Circle()
                         .fill(hovering ? Color.primary.opacity(0.08) : .clear)
                 )
+                .scaleEffect(hovering ? 1.06 : 1)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PressableIconStyle())
         .foregroundStyle(tint ?? Color.secondary)
         .animation(.easeOut(duration: 0.12), value: hovering)
         .onHover { hovering = $0 }
         .help(help)
+    }
+}
+
+/// 图标钮按下回缩:.plain 没有任何按压反馈,鼠标按下瞬间给一点物理感
+struct PressableIconStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.88 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+/// 浮起材质胶囊:选中标签 chip、选中主机行共用同一套光影语言 ——
+/// 「选中 = 浮起,不用强调色水洗」是全窗一条规则。
+/// macOS 26+ 用系统 Liquid Glass(真实折射,与原生 chrome 同材质),
+/// 旧系统回退自绘:略亮底 + 投影 + 顶部受光细边
+struct RaisedCapsule: View {
+    var body: some View {
+        let theme = ThemeStore.shared.current
+        if #available(macOS 26.0, *) {
+            Color.clear.glassEffect(.regular, in: .capsule)
+        } else {
+            Capsule()
+                .fill(theme.elevatedBackground.shadow(.drop(
+                    color: .black.opacity(theme.isDark ? 0.35 : 0.15),
+                    radius: 1.5, y: 1
+                )))
+                .overlay(
+                    Capsule().strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(theme.isDark ? 0.16 : 0.6), .white.opacity(0)],
+                            startPoint: .top, endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                )
+        }
+    }
+}
+
+/// 行/chip 的 AppKit 事件层:SwiftUI 手势在 macOS 15 上抢不过窗口拖拽,
+/// 且双击判定会拖慢单击。真 NSView 按下即响应;右键返回 nil 交还 .contextMenu。
+struct PressMouseLayer: NSViewRepresentable {
+    let onPress: () -> Void
+    var onDoubleClick: (() -> Void)?
+
+    func makeNSView(context: Context) -> MouseView {
+        let view = MouseView()
+        update(view)
+        return view
+    }
+
+    func updateNSView(_ view: MouseView, context: Context) {
+        update(view)
+    }
+
+    private func update(_ view: MouseView) {
+        view.onPress = onPress
+        view.onDoubleClick = onDoubleClick
+    }
+
+    final class MouseView: NSView {
+        var onPress: (() -> Void)?
+        var onDoubleClick: (() -> Void)?
+
+        override var mouseDownCanMoveWindow: Bool { false }
+        /// 后台窗口一击即选(原生列表行为),不用先点一下激活窗口
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        /// 自己不出菜单:返回 nil 让右键沿响应链交给 SwiftUI 的 .contextMenu
+        override func menu(for event: NSEvent) -> NSMenu? { nil }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2, let onDoubleClick {
+                onDoubleClick()
+            } else {
+                onPress?()
+            }
+        }
     }
 }
