@@ -6,6 +6,11 @@ import SwiftTerm
 final class BerthTerminalView: SwiftTerm.TerminalView {
     /// 生产环境主机:任何粘贴都强制确认(不止多行/危险命令)
     var isProductionHost = false
+    /// 本地 Shell 会话:粘贴文件/图片时转成本地路径写入命令行(SSH 会话无本地路径语义)
+    var isLocalSession = false
+    /// 所属会话 id:点击 pane 时在 AppKit 层接管模型焦点(SwiftUI 的 onTapGesture
+    /// 在 macOS 15 上收不到被 NSView 消费的点击)
+    var focusSessionID: UUID?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -13,11 +18,31 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
         // 永远不会绘制(显隐动画由 NSScrollView 私有管理),但宽度仍被预留,
         // 表现为右侧空白条且看不到滚动位置(issue #8)。legacy 样式可正常绘制。
         scrollerStyle = .legacy
+        subdueScroller()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         scrollerStyle = .legacy
+        subdueScroller()
+    }
+
+    /// legacy 滑块跟随 appearance 画成亮灰,深色主题近黑背景下太扎眼,整体压暗融入正文
+    private func subdueScroller() {
+        subviews.first { $0 is NSScroller }?.alphaValue = 0.35
+    }
+
+    /// 点 pane 聚焦在 AppKit 层做:模型焦点(focusedID)与键盘焦点一起接管
+    override func mouseDown(with event: NSEvent) {
+        MainActor.assumeIsolated {
+            if let id = focusSessionID {
+                let manager = SessionManager.shared
+                if manager.selectedID != id || window?.firstResponder !== self {
+                    manager.focusPane(id)
+                }
+            }
+        }
+        super.mouseDown(with: event)
     }
 
     // MARK: - 右键菜单(复制/粘贴 + 分屏)
@@ -151,9 +176,26 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
     }
 
     override func paste(_ sender: Any) {
+        let pb = NSPasteboard.general
+        // 本地会话:Finder 文件贴转义路径、裸图片(截图)落盘临时 PNG 贴路径
+        // (codex/claude 这类 TUI 靠路径接收图片;SwiftTerm 默认粘贴只认字符串会静默失败)。
+        // SSH 会话不开:本地路径在远端无意义。
+        if isLocalSession {
+            if pb.availableType(from: [.fileURL]) != nil,
+               let urls = pb.readObjects(forClasses: [NSURL.self],
+                                         options: [.urlReadingFileURLsOnly: true]) as? [URL],
+               !urls.isEmpty {
+                sendAsPaste(urls.map { Self.shellEscaped($0.path) }.joined(separator: " "))
+                return
+            }
+            if pb.string(forType: .string) == nil, let path = Self.saveClipboardImage(pb) {
+                sendAsPaste(Self.shellEscaped(path))
+                return
+            }
+        }
         let enabled = UserDefaults.standard.object(forKey: SettingsKeys.pasteProtection) as? Bool ?? true
         guard enabled,
-              let text = NSPasteboard.general.string(forType: .string),
+              let text = pb.string(forType: .string),
               (isProductionHost || Self.needsConfirmation(text)) else {
             super.paste(sender)
             return
@@ -167,6 +209,39 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
         if alert.runModal() == .alertFirstButtonReturn {
             super.paste(sender)
         }
+    }
+
+    /// 路径粘贴不走 super.paste(那条路只认字符串),按终端当前括号粘贴模式自己包
+    private func sendAsPaste(_ text: String) {
+        let payload = getTerminal().bracketedPasteMode
+            ? "\u{1b}[200~\(text)\u{1b}[201~" : text
+        MainActor.assumeIsolated {
+            if let id = focusSessionID, let session = SessionManager.shared.session(id) {
+                session.sendText(payload)
+            } else {
+                send(txt: payload)
+            }
+        }
+    }
+
+    /// 剪贴板图片落盘成临时 PNG(TIFF 转码),返回文件路径;没有图片返回 nil
+    static func saveClipboardImage(_ pb: NSPasteboard) -> String? {
+        var data = pb.data(forType: .png)
+        if data == nil, let tiff = pb.data(forType: .tiff) {
+            data = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])
+        }
+        guard let data else { return nil }
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("berth-clipboard-\(UUID().uuidString.prefix(8)).png")
+        guard (try? data.write(to: url)) != nil else { return nil }
+        return url.path
+    }
+
+    /// 路径 shell 转义:安全字符集内原样,否则单引号包裹(内部 ' → '\'')
+    static func shellEscaped(_ path: String) -> String {
+        let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-+=:@%~")
+        if path.unicodeScalars.allSatisfy({ safe.contains($0) }) { return path }
+        return "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     /// 多行,或单行但含高危命令片段

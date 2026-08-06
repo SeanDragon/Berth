@@ -1,8 +1,17 @@
+import AppKit
 import SwiftData
 import SwiftUI
 
+/// NSStatusItem 必须等 NSApplicationMain 起来再建(App.init 里创建会偶发启动卡死)
+final class BerthAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        MenuBarItemController.shared.start()
+    }
+}
+
 @main
 struct BerthApp: App {
+    @NSApplicationDelegateAdaptor(BerthAppDelegate.self) private var appDelegate
     private let container = Persistence.makeContainer()
     private let sessionManager = SessionManager.shared
 
@@ -108,19 +117,6 @@ struct BerthApp: App {
             SettingsView()
         }
 
-        // 菜单栏常驻入口(设置里可关)
-        MenuBarExtra(
-            "Berth",
-            systemImage: "terminal",
-            isInserted: .init(
-                get: { UserDefaults.standard.object(forKey: SettingsKeys.menuBarExtra) as? Bool ?? true },
-                set: { UserDefaults.standard.set($0, forKey: SettingsKeys.menuBarExtra) }
-            )
-        ) {
-            MenuBarExtraView()
-                .environment(sessionManager)
-        }
-        .modelContainer(container)
     }
 }
 

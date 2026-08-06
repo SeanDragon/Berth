@@ -151,6 +151,8 @@ final class TerminalSession: Identifiable {
         ThemeStore.shared.apply(to: terminalView)
         CursorPrefs.apply(to: terminalView)
         terminalView.terminalDelegate = self
+        view.focusSessionID = id
+        view.isLocalSession = spec.isLocal
     }
 
     // MARK: - 连接复用

@@ -58,8 +58,10 @@ struct StatusBarView: View {
                         separatorDot
                     }
                 }
+                // .secondary 而非 .tertiary:时钟是会被读的信息,暗色主题下
+                // .tertiary(~25% 白)难以辨认;列×行保持 .tertiary 维持层级
                 Text(context.date.formatted(date: .omitted, time: .standard))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                 separatorDot
                 Text("\(session.terminalView.getTerminal().cols)×\(session.terminalView.getTerminal().rows)")
                     .foregroundStyle(.tertiary)

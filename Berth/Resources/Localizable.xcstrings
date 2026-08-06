@@ -5624,6 +5624,16 @@
         }
       }
     },
+    "纯黑 Pure Black": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pure Black"
+          }
+        }
+      }
+    },
     "组": {
       "localizations": {
         "en": {

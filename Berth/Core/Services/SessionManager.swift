@@ -206,10 +206,23 @@ final class SessionManager {
             tab.root = newRoot
             if tab.focusedID == session.id { tab.focusedID = neighbor ?? newRoot.firstLeaf }
         } else {
-            tabs.removeAll { $0.id == tab.id }
-            if selectedTabID == tab.id { selectedTabID = tabs.last?.id }
+            removeTabSelectingNeighbor(tab)
         }
         afterClose()
+    }
+
+    /// 移除标签并把选中交给位置邻居(原右邻顶上,没有则左邻)——
+    /// 不再拿 tabs.last 兜底,关中间标签不会跳到最后一个
+    private func removeTabSelectingNeighbor(_ tab: PaneTab) {
+        let index = tabs.firstIndex { $0.id == tab.id }
+        tabs.removeAll { $0.id == tab.id }
+        if selectedTabID == tab.id {
+            if let index, !tabs.isEmpty {
+                selectedTabID = tabs[min(index, tabs.count - 1)].id
+            } else {
+                selectedTabID = tabs.last?.id
+            }
+        }
     }
 
     /// 整个标签关闭(标签 chip 的 ×):确认后连同其所有 pane 一起关
@@ -232,8 +245,7 @@ final class SessionManager {
             AIChatStore.shared.remove(id)
             sessions.removeAll { $0.id == id }
         }
-        tabs.removeAll { $0.id == tab.id }
-        if selectedTabID == tab.id { selectedTabID = tabs.last?.id }
+        removeTabSelectingNeighbor(tab)
         afterClose()
     }
 

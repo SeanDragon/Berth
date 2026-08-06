@@ -453,8 +453,15 @@ private struct TerminalTabChip: View {
         .foregroundStyle(isSelected ? .primary : .secondary)
         .contentShape(Capsule())
         .animation(.easeOut(duration: 0.12), value: isHovering)
-        .onTapGesture(count: 2, perform: startRename)
-        .onTapGesture(perform: select)
+        // 事件层用真 NSView:标题栏里 SwiftUI 手势抢不过窗口拖拽(macOS 15),
+        // 且双 tap 组合会给单击加判定延迟。重命名时撤掉,让 TextField 接点击;
+        // 尾部让出 × 按钮的响应区
+        .overlay {
+            if !isRenaming {
+                ChipMouseLayer(onPress: select, onDoubleClick: startRename)
+                    .padding(.trailing, (isHovering || isSelected) ? 26 : 0)
+            }
+        }
         .onHover { isHovering = $0 }
         .contextMenu {
             Button(String(localized: "重命名标签")) { startRename() }
@@ -487,6 +494,47 @@ private struct TerminalTabChip: View {
         case .connected: return .green
         case .disconnected(let reason):
             return reason == .userInitiated ? .gray : .red
+        }
+    }
+}
+
+/// chip 的 AppKit 事件层:标题栏里的 SwiftUI 手势在 macOS 15 抢不过窗口拖拽,
+/// 用真 NSView 接管 —— 按下即选中(无双击判定延迟)、双击改名、掐断标题栏拖窗。
+private struct ChipMouseLayer: NSViewRepresentable {
+    let onPress: () -> Void
+    let onDoubleClick: () -> Void
+
+    func makeNSView(context: Context) -> MouseView {
+        let view = MouseView()
+        update(view)
+        return view
+    }
+
+    func updateNSView(_ view: MouseView, context: Context) {
+        update(view)
+    }
+
+    private func update(_ view: MouseView) {
+        view.onPress = onPress
+        view.onDoubleClick = onDoubleClick
+    }
+
+    final class MouseView: NSView {
+        var onPress: (() -> Void)?
+        var onDoubleClick: (() -> Void)?
+
+        override var mouseDownCanMoveWindow: Bool { false }
+        /// 后台窗口点标签一击即选(原生标签栏行为),不用先点一下激活窗口
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        /// 自己不出菜单:返回 nil 让右键沿响应链交给 SwiftUI 的 .contextMenu
+        override func menu(for event: NSEvent) -> NSMenu? { nil }
+
+        override func mouseDown(with event: NSEvent) {
+            if event.clickCount == 2 {
+                onDoubleClick?()
+            } else {
+                onPress?()  // 首击已选中,连击改名正好落在已选中的标签上
+            }
         }
     }
 }
@@ -653,16 +701,9 @@ struct TerminalPaneView: View {
                 if let url { paths.append(url.path) }
             }
             guard !paths.isEmpty else { return }
-            session.sendText(paths.map(Self.shellEscapePath).joined(separator: " ") + " ")
+            session.sendText(paths.map(BerthTerminalView.shellEscaped).joined(separator: " ") + " ")
         }
         return true
-    }
-
-    /// 路径转义:简单字符原样,含特殊字符时用单引号包裹(内部单引号按 '\'' 处理)
-    static func shellEscapePath(_ path: String) -> String {
-        let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-~+@%:=,")
-        if path.unicodeScalars.allSatisfy({ safe.contains($0) }) { return path }
-        return "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     private var deleteWarning: String {
