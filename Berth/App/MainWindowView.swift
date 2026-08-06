@@ -9,6 +9,7 @@ struct MainWindowView: View {
     @State private var snippetRun = SnippetRunController.shared
     @State private var theme = ThemeStore.shared
     @State private var onboarding = OnboardingController.shared
+    @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @Environment(\.modelContext) private var modelContext
 
     var body: some View {
@@ -52,7 +53,8 @@ struct MainWindowView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: commandPalette.isPresented)
         .background(WindowConfigurator(
             appearanceName: theme.current.appearanceName,
-            backgroundColor: theme.current.backgroundNSColor
+            backgroundColor: theme.current.backgroundNSColor,
+            translucent: translucentChrome
         ))
         .sheet(item: $quickConnect.directConnectRequest) { request in
             DirectConnectSheet(request: request)

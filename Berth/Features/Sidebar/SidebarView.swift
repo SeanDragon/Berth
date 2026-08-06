@@ -17,6 +17,7 @@ struct SidebarView: View {
         demoMode ? DemoMode.samples : storedHosts + SSHConfigService.shared.mirrorHosts
     }
 
+    @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @State private var searchText = ""
     /// 键盘/单击选中的主机行
     @State private var selectedHostID: UUID?
@@ -58,7 +59,16 @@ struct SidebarView: View {
             Divider().overlay(theme.borderColor)
             keysRow
         }
-        .background(theme.sidebarBackground)
+        // 透明 chrome:不刷不透明底,让 NavigationSplitView 原生的 behind-window
+        // 侧栏毛玻璃透出桌面,只叠 45% 主题 tint 保住配色气质(压黑档留给不透明模式,
+        // 叠在玻璃上会发死黑);不透明模式维持原来的 chrome 带色
+        .background {
+            if translucentChrome {
+                Color(nsColor: theme.backgroundNSColor).opacity(0.45).ignoresSafeArea()
+            } else {
+                theme.sidebarBackground.ignoresSafeArea()
+            }
+        }
         .task(id: allHosts.count) { updateReachabilityTargets() }
         .sheet(isPresented: $isCreatingHost) {
             HostEditorView(host: nil, defaultGroupID: nil)

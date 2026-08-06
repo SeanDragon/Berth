@@ -9,6 +9,8 @@ struct WindowConfigurator: NSViewRepresentable {
     let backgroundColor: NSColor
     /// 独立小窗(密钥)保留标题文字,主窗口隐藏
     var keepsTitle = false
+    /// 透明 chrome:窗口非不透明 + 背景透明,让侧栏的 behind-window 毛玻璃透出桌面
+    var translucent = false
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -25,6 +27,7 @@ struct WindowConfigurator: NSViewRepresentable {
         window.appearance = NSAppearance(named: appearanceName)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = keepsTitle ? .visible : .hidden
-        window.backgroundColor = backgroundColor
+        window.isOpaque = !translucent
+        window.backgroundColor = translucent ? .clear : backgroundColor
     }
 }

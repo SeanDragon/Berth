@@ -8,6 +8,14 @@ struct TerminalTabsView: View {
     /// 终端区实测宽度:标题栏行(chips+按钮)按它定宽,才能让标签区铺满整个标题栏
     /// (toolbar 的分段布局不给 navigation 项撑满的机会,只能显式给宽)
     @State private var contentWidth: CGFloat = 0
+    /// chip 拖拽重排状态(AppKit 事件层驱动):dragOffset 是拖拽中 chip 的视觉位移,
+    /// dragSwapShift 累计交换补偿 —— 交换后 chip 的基准位置移动了,要从鼠标 ΔX 里扣掉
+    @State private var draggingChip: UUID?
+    @State private var dragOffset: CGFloat = 0
+    @State private var dragSwapShift: CGFloat = 0
+    @State private var chipFrames: [UUID: CGRect] = [:]
+    private static let chipSpacing: CGFloat = 2
+    private static let chipTrackSpace = "chipTrack"
 
     var body: some View {
         @Bindable var manager = sessionManager
@@ -157,7 +165,7 @@ struct TerminalTabsView: View {
     private var tabChips: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 2) {
+                HStack(spacing: Self.chipSpacing) {
                     ForEach(sessionManager.tabs) { tab in
                         TerminalTabChip(
                             tab: tab,
@@ -165,12 +173,25 @@ struct TerminalTabsView: View {
                             paneCount: tab.root.leafIDs().count,
                             isSelected: tab.id == sessionManager.selectedTabID,
                             select: { sessionManager.selectTab(tab.id) },
-                            close: { sessionManager.requestCloseTab(tab) }
+                            close: { sessionManager.requestCloseTab(tab) },
+                            onDragChanged: { chipDragChanged(tab, deltaX: $0) },
+                            onDragEnded: { chipDragEnded(tab) }
                         )
+                        .offset(x: draggingChip == tab.id ? dragOffset : 0)
+                        .zIndex(draggingChip == tab.id ? 1 : 0)
+                        .onGeometryChange(for: CGRect.self) { proxy in
+                            proxy.frame(in: .named(Self.chipTrackSpace))
+                        } action: { chipFrames[tab.id] = $0 }
                         .id(tab.id)
                     }
                     newTabMenu
                 }
+                // 拖拽中交换即时生效(跟手),松手后的归位走 spring
+                .animation(
+                    draggingChip == nil ? .spring(response: 0.25, dampingFraction: 0.9) : nil,
+                    value: sessionManager.tabs.map(\.id)
+                )
+                .coordinateSpace(name: Self.chipTrackSpace)
                 .padding(.horizontal, 10)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,6 +208,50 @@ struct TerminalTabsView: View {
                 guard let selected else { return }
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selected, anchor: .center) }
             }
+        }
+    }
+
+    // MARK: - chip 拖拽重排(AppKit 事件层驱动,新老系统一致)
+
+    private func chipDragChanged(_ tab: PaneTab, deltaX: CGFloat) {
+        if draggingChip != tab.id {
+            draggingChip = tab.id
+            dragSwapShift = 0
+        }
+        dragOffset = deltaX - dragSwapShift
+        swapIfCrossedNeighbor(tab)
+    }
+
+    /// 拖拽中 chip 的视觉中线越过邻居中线 → 数组交换 + 位移补偿(基准位置变了)
+    private func swapIfCrossedNeighbor(_ tab: PaneTab) {
+        guard let frame = chipFrames[tab.id],
+              let index = sessionManager.tabs.firstIndex(where: { $0.id == tab.id }) else { return }
+        let currentMidX = frame.midX + dragOffset
+        if dragOffset > 0, index + 1 < sessionManager.tabs.count {
+            let neighbor = sessionManager.tabs[index + 1]
+            if let neighborFrame = chipFrames[neighbor.id], currentMidX > neighborFrame.midX {
+                sessionManager.moveTab(tab.id, to: index + 1)
+                let shift = neighborFrame.width + Self.chipSpacing
+                dragSwapShift += shift
+                dragOffset -= shift
+            }
+        } else if dragOffset < 0, index - 1 >= 0 {
+            let neighbor = sessionManager.tabs[index - 1]
+            if let neighborFrame = chipFrames[neighbor.id], currentMidX < neighborFrame.midX {
+                sessionManager.moveTab(tab.id, to: index - 1)
+                let shift = neighborFrame.width + Self.chipSpacing
+                dragSwapShift -= shift
+                dragOffset += shift
+            }
+        }
+    }
+
+    private func chipDragEnded(_ tab: PaneTab) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.9)) { dragOffset = 0 }
+        // 归位动画期间保持 zIndex/offset 归属,结束再释放拖拽态
+        let settled = tab.id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if draggingChip == settled { draggingChip = nil }
         }
     }
 
@@ -387,6 +452,8 @@ private struct TerminalTabChip: View {
     let isSelected: Bool
     let select: () -> Void
     let close: () -> Void
+    var onDragChanged: ((CGFloat) -> Void)?
+    var onDragEnded: (() -> Void)?
 
     @State private var isHovering = false
     /// 双击/右键重命名:行内 TextField 编辑,回车/失焦提交,Esc 取消
@@ -442,12 +509,18 @@ private struct TerminalTabChip: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        // 选中 = 浮起材质(与侧栏选中行同一块料),不再用强调色水洗
+        // 选中 = 浮起材质(与侧栏选中行同一块料),不再用强调色水洗;
+        // 未选中给 1pt 发丝描边,标出胶囊轮廓(拖拽重排的把手感)
         .background {
             if isSelected {
                 RaisedCapsule()
             } else if isHovering {
                 Capsule().fill(Color.primary.opacity(0.05))
+            }
+        }
+        .overlay {
+            if !isSelected {
+                Capsule().strokeBorder(ThemeStore.shared.current.borderColor, lineWidth: 1)
             }
         }
         .foregroundStyle(isSelected ? .primary : .secondary)
@@ -458,8 +531,13 @@ private struct TerminalTabChip: View {
         // 尾部让出 × 按钮的响应区
         .overlay {
             if !isRenaming {
-                PressMouseLayer(onPress: select, onDoubleClick: startRename)
-                    .padding(.trailing, (isHovering || isSelected) ? 26 : 0)
+                PressMouseLayer(
+                    onPress: select,
+                    onDoubleClick: startRename,
+                    onDragChanged: onDragChanged,
+                    onDragEnded: onDragEnded
+                )
+                .padding(.trailing, (isHovering || isSelected) ? 26 : 0)
             }
         }
         .onHover { isHovering = $0 }

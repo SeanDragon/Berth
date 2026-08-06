@@ -5664,6 +5664,16 @@
         }
       }
     },
+    "终端区始终保持不透明,保证输出可读。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The terminal area always stays opaque for readability."
+          }
+        }
+      }
+    },
     "终端响铃": {
       "localizations": {
         "en": {
@@ -6810,6 +6820,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Choose File…"
+          }
+        }
+      }
+    },
+    "透明毛玻璃(侧栏与标题栏透出桌面)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Translucent chrome (sidebar and title bar show the desktop)"
           }
         }
       }

@@ -96,9 +96,13 @@ struct RaisedCapsule: View {
 
 /// 行/chip 的 AppKit 事件层:SwiftUI 手势在 macOS 15 上抢不过窗口拖拽,
 /// 且双击判定会拖慢单击。真 NSView 按下即响应;右键返回 nil 交还 .contextMenu。
+/// 可选水平拖拽回调(窗口坐标 ΔX,4pt 死区)驱动标签重排 —— DragGesture 版
+/// 只在 macOS 26 生效,AppKit 层新老系统行为一致。
 struct PressMouseLayer: NSViewRepresentable {
     let onPress: () -> Void
     var onDoubleClick: (() -> Void)?
+    var onDragChanged: ((CGFloat) -> Void)?
+    var onDragEnded: (() -> Void)?
 
     func makeNSView(context: Context) -> MouseView {
         let view = MouseView()
@@ -113,11 +117,17 @@ struct PressMouseLayer: NSViewRepresentable {
     private func update(_ view: MouseView) {
         view.onPress = onPress
         view.onDoubleClick = onDoubleClick
+        view.onDragChanged = onDragChanged
+        view.onDragEnded = onDragEnded
     }
 
     final class MouseView: NSView {
         var onPress: (() -> Void)?
         var onDoubleClick: (() -> Void)?
+        var onDragChanged: ((CGFloat) -> Void)?
+        var onDragEnded: (() -> Void)?
+        private var downX: CGFloat = 0
+        private var dragging = false
 
         override var mouseDownCanMoveWindow: Bool { false }
         /// 后台窗口一击即选(原生列表行为),不用先点一下激活窗口
@@ -126,11 +136,27 @@ struct PressMouseLayer: NSViewRepresentable {
         override func menu(for event: NSEvent) -> NSMenu? { nil }
 
         override func mouseDown(with event: NSEvent) {
+            downX = event.locationInWindow.x
+            dragging = false
             if event.clickCount == 2, let onDoubleClick {
                 onDoubleClick()
             } else {
-                onPress?()
+                onPress?()  // 首击已选中,拖拽/连击都落在已选中的目标上
             }
+        }
+
+        override func mouseDragged(with event: NSEvent) {
+            guard onDragChanged != nil else { return }
+            let delta = event.locationInWindow.x - downX
+            // 4pt 死区:点按时的手抖不触发重排
+            if !dragging, abs(delta) < 4 { return }
+            dragging = true
+            onDragChanged?(delta)
+        }
+
+        override func mouseUp(with event: NSEvent) {
+            if dragging { onDragEnded?() }
+            dragging = false
         }
     }
 }

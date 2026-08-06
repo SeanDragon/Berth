@@ -261,6 +261,15 @@ final class SessionManager {
 
     // MARK: - 选择
 
+    /// 拖拽重排标签:把 id 标签移到 index 位置(顺序随 persistOpenTabs 持久化)
+    func moveTab(_ id: PaneTab.ID, to index: Int) {
+        guard let from = tabs.firstIndex(where: { $0.id == id }),
+              from != index, index >= 0, index < tabs.count else { return }
+        let tab = tabs.remove(at: from)
+        tabs.insert(tab, at: index)
+        persistOpenTabs()
+    }
+
     /// 标签 chip / ⌘1-9:选中某标签(聚焦其上次的 pane)
     func selectTab(_ id: PaneTab.ID) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
@@ -412,8 +421,11 @@ final class SessionManager {
 
     private static let openTabsKey = "session.openTabs"
 
-    /// 每个标签持久化其首个 pane 的主机 id(嵌套布局不恢复)
+    /// 每个标签持久化其首个 pane 的主机 id(嵌套布局不恢复)。
+    /// 自动化验收(临时库)不写:UserDefaults 不随 BERTH_TRANSIENT_STORE 隔离,
+    /// 验收结束关全部标签会把用户真实的恢复列表覆写成空
     private func persistOpenTabs() {
+        guard ProcessInfo.processInfo.environment["BERTH_TRANSIENT_STORE"] != "1" else { return }
         let ids = tabs.compactMap { session($0.root.firstLeaf)?.spec.hostID.uuidString }
         UserDefaults.standard.set(ids, forKey: Self.openTabsKey)
     }

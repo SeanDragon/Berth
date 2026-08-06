@@ -26,6 +26,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
     @AppStorage(SettingsKeys.autoCheckUpdates) private var autoCheckUpdates = true
     @AppStorage(SettingsKeys.localShellPath) private var localShellPath = ""
+    @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @State private var aiProviderID = AIProvider.all[0].id
     @State private var aiModelIsCustom = false
     @State private var tab: SettingsTab = .terminal
@@ -118,6 +119,10 @@ struct SettingsView: View {
                         Text(theme.name).tag(theme.id)
                     }
                 }
+                Toggle("透明毛玻璃(侧栏与标题栏透出桌面)", isOn: $translucentChrome)
+                Text("终端区始终保持不透明,保证输出可读。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $fontSize, in: 10...22, step: 1) {
                         Text("字号")

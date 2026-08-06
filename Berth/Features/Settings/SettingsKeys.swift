@@ -25,6 +25,8 @@ enum SettingsKeys {
     static let demoMode = "app.demoMode"
     /// 隐私模式:界面上的主机地址/IP 打码,再点一下恢复(录屏用)
     static let privacyMode = "app.privacyMode"
+    /// 透明毛玻璃 chrome:侧栏/标题栏透出桌面(终端区始终不透明)
+    static let translucentChrome = "app.translucentChrome"
     /// AI 助手:模型名(空 = 默认 claude-opus-5)
     static let aiModel = "ai.model"
     /// AI 助手:API 地址(空 = https://api.anthropic.com;兼容自建中转)
