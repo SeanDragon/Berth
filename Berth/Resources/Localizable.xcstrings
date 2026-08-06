@@ -4504,6 +4504,16 @@
         }
       }
     },
+    "本地 Shell 启动后立即退出(退出码 %@):%@。请检查 shell 路径与其启动配置;可在「设置 → 终端」修改 Shell 路径。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The local shell exited immediately (exit code %1$@): %2$@. Check the shell path and its startup files; you can change the shell path in Settings → Terminal."
+          }
+        }
+      }
+    },
     "本地 Shell 标签页(⇧⌘T / ⌘K)所用的 shell。留空使用登录 shell;对新开的本地会话生效。": {
       "localizations": {
         "en": {

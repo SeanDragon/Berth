@@ -131,9 +131,12 @@ struct SettingsView: View {
                         .monospacedDigit()
                         .frame(width: 44, alignment: .trailing)
                 }
-                Text("字号变更对新开的标签页生效")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                .onChange(of: fontSize) { _, size in
+                    // 即时应用到所有已开会话(行列数变化会经 resize 流程同步给 PTY)
+                    for session in SessionManager.shared.sessions {
+                        session.terminalView.font = .monospacedSystemFont(ofSize: CGFloat(size), weight: .regular)
+                    }
+                }
                 Picker("光标样式", selection: $cursorShape) {
                     Text("方块").tag(CursorPrefs.shapeBlock)
                     Text("竖线").tag(CursorPrefs.shapeBar)

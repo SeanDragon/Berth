@@ -46,6 +46,7 @@ final class TerminalSession: Identifiable {
         case authenticationGateFailed
         case notConnected
         case localShellFailed(String)
+        case localShellExited(Int32?, String)
 
         var errorDescription: String? {
             switch self {
@@ -59,6 +60,9 @@ final class TerminalSession: Identifiable {
                 return String(localized: "未连接,无法打开 SFTP。")
             case .localShellFailed(let path):
                 return String(localized: "无法启动本地 Shell:\(path) 不存在或不可执行。可在「设置 → 终端」修改 Shell 路径。")
+            case .localShellExited(let status, let path):
+                let code = status.map { String($0) } ?? "?"
+                return String(localized: "本地 Shell 启动后立即退出(退出码 \(code)):\(path)。请检查 shell 路径与其启动配置;可在「设置 → 终端」修改 Shell 路径。")
             }
         }
     }
@@ -1085,6 +1089,7 @@ final class TerminalSession: Identifiable {
             throw SessionError.localShellFailed(shell)
         }
         localPty = pty
+        DebugLog.append("local shell spawned pid=\(pty.pid) shell=\(shell)")
         pty.onData = { [weak self] bytes in
             self?.ingest(bytes: bytes)
         }
@@ -1119,6 +1124,14 @@ final class TerminalSession: Identifiable {
             pty.terminate()
         }
         try Task.checkCancellation()
+        // 启动即退(2 秒内且非正常退出):按错误处理并报出退出码,而不是无声关掉
+        // pane ——「画面闪一下就没了」无法诊断(issue #10)。退出码 0(用户秒敲
+        // exit / 脚本正常结束)仍走正常关 pane。
+        let uptime = Date().timeIntervalSince(pty.spawnedAt)
+        if uptime < 2, (pty.exitStatus ?? -1) != 0 {
+            DebugLog.append("local shell exited immediately uptime=\(uptime) status=\(String(describing: pty.exitStatus))")
+            throw SessionError.localShellExited(pty.exitStatus, shell)
+        }
     }
 
     /// AI 助手用(本地会话):独立子进程执行命令,不触碰用户的交互 shell。

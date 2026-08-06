@@ -24,6 +24,10 @@ final class LocalPty: @unchecked Sendable {
     private(set) var pid: pid_t = 0
     /// 子进程仍在运行(主线程读写)
     private(set) var running = false
+    /// 子进程退出码(WEXITSTATUS;信号终止时为 nil),诊断秒退用
+    private(set) var exitStatus: Int32?
+    /// spawn 时刻,判定「启动即退」
+    let spawnedAt = Date()
 
     /// PTY 输出(主线程回调)
     var onData: (@MainActor ([UInt8]) -> Void)?
@@ -62,7 +66,16 @@ final class LocalPty: @unchecked Sendable {
 
         var attr: posix_spawnattr_t?
         posix_spawnattr_init(&attr)
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID))
+        // SETSIGDEF/SETSIGMASK:子 shell 会继承 GUI app 的信号掩码与忽略处置,
+        // zsh 的作业控制在被污染的信号环境下可能启动即退(issue #10,macOS 15)。
+        // 全部重置为默认,与 Terminal.app/iTerm2 一致
+        var allSignals = sigset_t()
+        sigfillset(&allSignals)
+        var noSignals = sigset_t()
+        sigemptyset(&noSignals)
+        posix_spawnattr_setsigdefault(&attr, &allSignals)
+        posix_spawnattr_setsigmask(&attr, &noSignals)
+        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
 
         var argv: [UnsafeMutablePointer<CChar>?] = [strdup(execName), nil]
         var envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0) } + [nil]
@@ -167,7 +180,9 @@ final class LocalPty: @unchecked Sendable {
         exited = true
         running = false
         var status: Int32 = 0
-        waitpid(pid, &status, WNOHANG)
+        if waitpid(pid, &status, WNOHANG) == pid, (status & 0x7F) == 0 {
+            exitStatus = (status >> 8) & 0xFF  // WEXITSTATUS
+        }
         monitor?.cancel()
         monitor = nil
         io?.close()
