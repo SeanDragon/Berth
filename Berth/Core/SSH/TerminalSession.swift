@@ -127,9 +127,8 @@ final class TerminalSession: Identifiable {
     @ObservationIgnored private var lastNotifiedAt: Date?
     /// 触发器匹配用的未完成行缓冲(按 \n 切分,剥离转义)
     @ObservationIgnored private var triggerLineBuffer = ""
-    /// 本地 Shell(spec.isLocal):子进程与回调桥。本地会话不使用任何 SSH 字段。
-    @ObservationIgnored private var localProcess: LocalProcess?
-    @ObservationIgnored private var localBridge: LocalShellBridge?
+    /// 本地 Shell(spec.isLocal)的 PTY 宿主。本地会话不使用任何 SSH 字段。
+    @ObservationIgnored private var localPty: LocalPty?
     /// 会话录制:输出剥离转义后追加到此文件
     @ObservationIgnored private var logHandle: FileHandle?
     /// 当前正在录制到的文件 URL(nil = 未录制)
@@ -238,11 +237,10 @@ final class TerminalSession: Identifiable {
             self.connection = nil
             self.jumpClients = []
             // 本地进程兜底:正常路径已在 runLocalSession 内退出/终止,这里防泄漏
-            if let process = self.localProcess {
-                if process.running { process.terminate() }
-                self.localProcess = nil
+            if let pty = self.localPty {
+                if pty.running { pty.terminate() }
+                self.localPty = nil
             }
-            self.localBridge = nil
             sessionTask = nil
             if !orphanedJumps.isEmpty {
                 Task.detached {
@@ -1058,30 +1056,38 @@ final class TerminalSession: Identifiable {
 
     // MARK: - 本地 Shell(spec.isLocal)
 
-    /// 本地会话:fork 本机 shell 挂到同一个 TerminalView,生命周期对齐 SSH 路径 ——
-    /// 正常退出(exit)→ 干净返回 → onShellExit 关 pane;任务取消(⌘W/断开)→ SIGTERM。
+    /// 本地会话:posix_spawn 起本机 shell 挂到同一个 TerminalView(不用 forkpty ——
+    /// 多线程进程里 fork 会死锁,启动恢复标签时必现「有回显没提示符」)。
+    /// 生命周期对齐 SSH 路径:正常退出(exit)→ 干净返回 → onShellExit 关 pane;
+    /// 任务取消(⌘W/断开)→ SIGTERM,退出事件经 monitor 正常送达。
     private func runLocalSession() async throws {
         let shell = LocalShell.resolvedShellPath()
         guard FileManager.default.isExecutableFile(atPath: shell) else {
             throw SessionError.localShellFailed(shell)
         }
-        let bridge = LocalShellBridge(session: self)
-        let process = LocalProcess(delegate: bridge)
-        localBridge = bridge
-        localProcess = process
-
+        let term = terminalView.getTerminal()
         var env = Terminal.getEnvironmentVariables(termName: "xterm-256color")
         env.append("SHELL=\(shell)")
         env.append("TERM_PROGRAM=Berth")
-        // 按 Terminal.app 惯例把 argv[0] 置为 "-zsh",让 shell 走登录初始化(zprofile 等)
-        let execName = "-" + (shell as NSString).lastPathComponent
-        process.startProcess(
-            executable: shell,
-            environment: env,
-            execName: execName,
-            currentDirectory: FileManager.default.homeDirectoryForCurrentUser.path
-        )
-        guard process.running else { throw SessionError.localShellFailed(shell) }
+        let pty: LocalPty
+        do {
+            // 按 Terminal.app 惯例 argv[0] 带 "-" 前缀,让 shell 走登录初始化(zprofile 等)
+            pty = try LocalPty(
+                executable: shell,
+                execName: "-" + (shell as NSString).lastPathComponent,
+                environment: env,
+                directory: FileManager.default.homeDirectoryForCurrentUser.path,
+                cols: term.cols,
+                rows: term.rows
+            )
+        } catch {
+            DebugLog.append("local shell spawn failed shell=\(shell) error=\(error)")
+            throw SessionError.localShellFailed(shell)
+        }
+        localPty = pty
+        pty.onData = { [weak self] bytes in
+            self?.ingest(bytes: bytes)
+        }
 
         let (stream, continuation) = AsyncStream.makeStream(of: StdinEvent.self)
         stdinWriter = continuation
@@ -1096,26 +1102,21 @@ final class TerminalSession: Identifiable {
             for await event in stream {
                 switch event {
                 case .bytes(let bytes):
-                    process.send(data: bytes[...])
+                    pty.send(bytes)
                 case .resize(let cols, let rows):
-                    var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
-                    _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: process.childfd, windowSize: &size)
+                    pty.resize(cols: cols, rows: rows)
                 }
             }
         }
         defer { stdinPump.cancel() }
 
-        // 等待子进程退出;任务取消(用户断开/关 pane)时 SIGTERM 并立即收尾。
-        // terminate() 会取消 LocalProcess 的退出监视,所以取消路径要手动补发 fireTerminated。
+        // 等待子进程退出;任务取消(用户断开/关 pane)时 SIGTERM,由退出监视器收尾
         await withTaskCancellationHandler {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-                bridge.whenTerminated { cont.resume() }
+                pty.whenExited { cont.resume() }
             }
         } onCancel: {
-            Task { @MainActor [weak self] in
-                self?.localProcess?.terminate()
-                self?.localBridge?.fireTerminated()
-            }
+            pty.terminate()
         }
         try Task.checkCancellation()
     }
@@ -1179,51 +1180,6 @@ final class TerminalSession: Identifiable {
         return (text, exitCode)
     }
 
-    /// LocalProcess 的回调桥。LocalProcess 在主队列投递数据/退出事件,这里转回
-    /// @MainActor 的会话;单独成类是因为 LocalProcessDelegate 是非隔离协议。
-    @MainActor
-    private final class LocalShellBridge: LocalProcessDelegate {
-        private weak var session: TerminalSession?
-        private var terminated = false
-        private var onTerminated: (() -> Void)?
-
-        init(session: TerminalSession) {
-            self.session = session
-        }
-
-        /// 注册退出回调;若进程已先一步退出则立即补发
-        func whenTerminated(_ handler: @escaping () -> Void) {
-            if terminated { handler() } else { onTerminated = handler }
-        }
-
-        /// 幂等:自然退出与主动 terminate 都汇聚到这里
-        func fireTerminated() {
-            guard !terminated else { return }
-            terminated = true
-            onTerminated?()
-            onTerminated = nil
-        }
-
-        nonisolated func processTerminated(_ source: LocalProcess, exitCode: Int32?) {
-            MainActor.assumeIsolated { fireTerminated() }
-        }
-
-        nonisolated func dataReceived(slice: ArraySlice<UInt8>) {
-            MainActor.assumeIsolated { session?.ingest(bytes: Array(slice)) }
-        }
-
-        nonisolated func getWindowSize() -> winsize {
-            MainActor.assumeIsolated {
-                let term = session?.terminalView.getTerminal()
-                return winsize(
-                    ws_row: UInt16(term?.rows ?? 24),
-                    ws_col: UInt16(term?.cols ?? 80),
-                    ws_xpixel: 0,
-                    ws_ypixel: 0
-                )
-            }
-        }
-    }
 
     /// 为某一跳(目标或跳板)构建认证方式。凭据按该跳自己的 hostID 从 Keychain 解析;
     /// useTransient 仅对目标本机成立(临时直连时用户当场输入的密码/passphrase)。

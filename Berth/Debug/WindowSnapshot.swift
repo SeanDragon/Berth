@@ -7,7 +7,10 @@ import AppKit
 enum WindowSnapshot {
     static func runIfRequested() async {
         let env = ProcessInfo.processInfo.environment
-        guard let path = env["BERTH_WINDOW_SNAPSHOT"] else { return }
+        // defaults 参数版(-berth.windowSnapshot <路径>):不带 BERTH_ 环境变量,
+        // 不会被启动逻辑当成自动化环境 —— 用于截「真实会话恢复」路径
+        guard let path = env["BERTH_WINDOW_SNAPSHOT"]
+            ?? UserDefaults.standard.string(forKey: "berth.windowSnapshot") else { return }
         // 值即要开的本地 Shell 数量("1" 开一个,"5" 开五个,方便截多标签布局)
         if let count = Int(env["BERTH_SNAPSHOT_OPEN_LOCAL"] ?? ""), count > 0 {
             try? await Task.sleep(for: .seconds(1))

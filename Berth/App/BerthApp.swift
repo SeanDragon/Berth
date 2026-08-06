@@ -47,7 +47,8 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runAICommandIfRequested(container: container)
                     await M2AcceptanceTest.runAIChatIfRequested(container: container)
                     await LocalShellAcceptanceTest.runIfRequested()
-                    await WindowSnapshot.runIfRequested()
+                    // 并发跑:不挡在启动链前头,否则截不到会话恢复后的画面
+                    Task { await WindowSnapshot.runIfRequested() }
                     await DemoScene.runIfRequested(container: container)
                     // 自动化验收/临时库环境不做会话恢复,也不发检查更新请求
                     let env = ProcessInfo.processInfo.environment
