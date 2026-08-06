@@ -66,6 +66,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.berthssh.app
         SWIFT_VERSION: "5.0"
+        # C 层 PTY spawn(见 BerthPtySpawn.h:posix_spawn 拿不到控制终端,须 fork+login_tty)
+        SWIFT_OBJC_BRIDGING_HEADER: Berth/Core/Terminal/BerthPtySpawn.h
         # 用稳定的开发证书签名(而非 ad-hoc "-"):ad-hoc 下每次重建二进制指纹都变,
         # Keychain 把新构建当陌生 app,读旧密码项报 errSecAuthFailed(发布用 Developer ID 另签)
         CODE_SIGN_STYLE: Automatic

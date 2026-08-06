@@ -3,16 +3,15 @@ import Dispatch
 import Foundation
 import SwiftTerm
 
-/// 本地 PTY 宿主:posix_openpt + posix_spawn。
+/// 本地 PTY 宿主:posix_openpt + C 层 fork/login_tty/execve(BerthPtySpawn.c)。
 ///
-/// 不用 SwiftTerm LocalProcess 的 forkpty:多线程进程里 fork 出的子进程可能死锁在
-/// malloc/dyld 锁上(fork 只复制调用线程,其他线程持有的锁永远不会释放),表现为
-/// 「重启恢复的本地 Shell 有回显没提示符」—— 回显是内核行规程给的,zsh 根本没活到
-/// exec。app 启动恢复标签正是线程最繁忙的时刻,命中率极高;posix_spawn 在内核里
-/// 完成 spawn,是多线程进程唯一安全的路径。
-///
-/// 控制终端:子进程 POSIX_SPAWN_SETSID 成为会话首领后,file actions 按路径 open
-/// slave 端(无 O_NOCTTY),内核自动将其设为控制终端,shell 拿到完整作业控制。
+/// 不用 SwiftTerm LocalProcess 的 forkpty:它 fork 后还在子进程里跑 Swift 运行时
+/// 代码,多线程 GUI 进程里会死锁在 malloc/dyld 锁上,表现为「重启恢复的本地 Shell
+/// 有回显没提示符」(回显是内核行规程给的,shell 根本没活到 exec)。
+/// 也不用 posix_spawn:SETSID + file actions 打开 slave 拿不到控制终端(实测
+/// tcgetpgrp 失败),zsh 降级为无作业控制,fish 直接启动退出(issue #10)。
+/// 正解是 C 函数里 fork,child 段只做 async-signal-safe 调用,login_tty 一步
+/// 完成 setsid + TIOCSCTTY + dup2 —— 与 Terminal.app / node-pty 同款。
 /// onData / whenExited 回调统一投递主线程。
 final class LocalPty: @unchecked Sendable {
     enum SpawnError: Error {
@@ -56,41 +55,18 @@ final class LocalPty: @unchecked Sendable {
         var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
         _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: master, windowSize: &size)
 
-        var fileActions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&fileActions)
-        posix_spawn_file_actions_addopen(&fileActions, 0, slavePath, O_RDWR, 0)
-        posix_spawn_file_actions_adddup2(&fileActions, 0, 1)
-        posix_spawn_file_actions_adddup2(&fileActions, 0, 2)
-        posix_spawn_file_actions_addclose(&fileActions, master)
-        posix_spawn_file_actions_addchdir_np(&fileActions, directory)
-
-        var attr: posix_spawnattr_t?
-        posix_spawnattr_init(&attr)
-        // SETSIGDEF/SETSIGMASK:子 shell 会继承 GUI app 的信号掩码与忽略处置,
-        // zsh 的作业控制在被污染的信号环境下可能启动即退(issue #10,macOS 15)。
-        // 全部重置为默认,与 Terminal.app/iTerm2 一致
-        var allSignals = sigset_t()
-        sigfillset(&allSignals)
-        var noSignals = sigset_t()
-        sigemptyset(&noSignals)
-        posix_spawnattr_setsigdefault(&attr, &allSignals)
-        posix_spawnattr_setsigmask(&attr, &noSignals)
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETSID | POSIX_SPAWN_SETSIGDEF | POSIX_SPAWN_SETSIGMASK))
-
+        // fork 前把 child 需要的一切备成 C 内存,child 段零分配
         var argv: [UnsafeMutablePointer<CChar>?] = [strdup(execName), nil]
         var envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0) } + [nil]
         defer {
             argv.compactMap { $0 }.forEach { free($0) }
             envp.compactMap { $0 }.forEach { free($0) }
-            posix_spawn_file_actions_destroy(&fileActions)
-            posix_spawnattr_destroy(&attr)
         }
 
-        var child: pid_t = 0
-        let rc = posix_spawn(&child, executable, &fileActions, &attr, &argv, &envp)
-        guard rc == 0 else {
+        let child = berth_pty_spawn(executable, &argv, &envp, slavePath, directory)
+        guard child > 0 else {
             close(master)
-            throw SpawnError.spawn(rc)
+            throw SpawnError.spawn(errno)
         }
 
         pid = child
