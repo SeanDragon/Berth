@@ -9,13 +9,10 @@ import SwiftData
 enum KeyStore {
 
     enum KeyStoreError: LocalizedError {
-        case unsupportedKey
         case emptyName
 
         var errorDescription: String? {
             switch self {
-            case .unsupportedKey:
-                return String(localized: "无法解析密钥:支持 ed25519 与 RSA 私钥(OpenSSH、PKCS#1、PKCS#8 格式);若有 passphrase 请一并填写。")
             case .emptyName:
                 return String(localized: "给密钥起个名字。")
             }
@@ -47,21 +44,17 @@ enum KeyStore {
         guard !trimmedName.isEmpty else { throw KeyStoreError.emptyName }
 
         // 老式 PKCS#1 / PKCS#8 PEM(云厂商下发的 .pem、OpenSSH 7.8 之前生成的 key)
-        // 先转成 OpenSSH 容器 —— Citadel 只认后者。转换失败会抛出带排查提示的错误。
-        let normalized = try PrivateKeyFormat.normalized(pemText, passphrase: passphrase, comment: trimmedName)
-        let material = normalized.text
-        // 转换时若已用 passphrase 解密,得到的就是明文密钥,不能再交给解析器当解密口令
-        let decryptionKey = normalized.passphraseConsumed
-            ? nil
-            : passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
+        // 归一化/解密/诊断统一走 parseForAuth(与两端连接路径同口径),库里存归一化产物。
+        let parsed = try PrivateKeyFormat.parseForAuth(pemText, passphrase: passphrase, comment: trimmedName)
+        let material = parsed.normalized.text
 
         let keyType: String
         let publicLine: String
-
-        if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: material, decryptionKey: decryptionKey) {
+        switch parsed.key {
+        case .ed25519(let key):
             keyType = "ssh-ed25519"
             publicLine = OpenSSHFormat.publicKeyLine(ed25519: key.publicKey, comment: trimmedName)
-        } else if let key = try? Insecure.RSA.PrivateKey(sshRsa: material, decryptionKey: decryptionKey) {
+        case .rsa(let key):
             keyType = "ssh-rsa"
             var body = ByteBufferAllocator().buffer(capacity: 1024)
             _ = key.publicKey.write(to: &body)
@@ -70,14 +63,12 @@ enum KeyStore {
                 keyBody: Data(body.readableBytesView),
                 comment: trimmedName
             )
-        } else {
-            throw KeyStoreError.unsupportedKey
         }
 
         let record = SSHKeyRecord(name: trimmedName, keyType: keyType, publicKey: publicLine, storageFormat: .opensshPEM)
         try KeychainStore.save(material, account: KeychainStore.privateKeyAccount(for: record.id))
         // passphrase 已在转换时用掉的话,库里存的是明文密钥,没有再存口令的必要
-        if let passphrase, !passphrase.isEmpty, !normalized.passphraseConsumed {
+        if let passphrase, !passphrase.isEmpty, !parsed.normalized.passphraseConsumed {
             try KeychainStore.save(passphrase, account: KeychainStore.keyPassphraseAccount(for: record.id))
         }
         context.insert(record)

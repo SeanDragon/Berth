@@ -1,3 +1,4 @@
+import Citadel
 import CommonCrypto
 import Crypto
 import Foundation
@@ -46,7 +47,7 @@ enum PrivateKeyFormat {
             case .encryptedPKCS8:
                 return String(localized: "这是加密的 PKCS#8 私钥,暂不支持直接导入。请先用 `ssh-keygen -p -f <文件>` 转成 OpenSSH 格式再导入。")
             case .missingPassphrase:
-                return String(localized: "这把私钥有 passphrase,请在下方一并填写。")
+                return String(localized: "这把私钥有 passphrase,请填写后重试。")
             case .wrongPassphrase:
                 return String(localized: "passphrase 不正确,无法解密这把私钥。")
             case .unsupportedPEMCipher(let name):
@@ -119,6 +120,82 @@ enum PrivateKeyFormat {
         default:
             throw ConversionError.notAPrivateKey
         }
+    }
+
+    /// 归一化 + 解密 + 解析一步到位。macOS 连接、iOS 连接、密钥导入三处共用 ——
+    /// 同一把钥匙在三个入口必须给出同一个诊断,分开维护迟早口径漂移(issue #12 的教训)。
+    struct ParsedForAuth {
+        enum Key {
+            case ed25519(Curve25519.Signing.PrivateKey)
+            case rsa(Insecure.RSA.PrivateKey)
+        }
+        let key: Key
+        /// 归一化产物:导入时存 Keychain 用(text / passphraseConsumed)
+        let normalized: Normalized
+    }
+
+    static func parseForAuth(_ text: String, passphrase: String?, comment: String = "") throws -> ParsedForAuth {
+        let normalized = try normalized(text, passphrase: passphrase, comment: comment)
+        // 转换时已用 passphrase 解密的是明文密钥,不能再把口令交给解析器
+        let decryptionKey = normalized.passphraseConsumed
+            ? nil
+            : passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
+        if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text, decryptionKey: decryptionKey) {
+            return ParsedForAuth(key: .ed25519(key), normalized: normalized)
+        }
+        if let key = try? Insecure.RSA.PrivateKey(sshRsa: normalized.text, decryptionKey: decryptionKey) {
+            return ParsedForAuth(key: .rsa(key), normalized: normalized)
+        }
+        throw failureReason(
+            forOpenSSH: normalized.text,
+            passphraseProvided: decryptionKey != nil || normalized.passphraseConsumed
+        )
+    }
+
+    /// 归一化成功、但 ed25519/RSA 两种解析器都吃不下时,回答「到底为什么」。
+    ///
+    /// OpenSSH 容器是不透明的:ECDSA 密钥能过 `normalized`(原样放行),却在解析这步
+    /// 才失败。不查一下就只能报「无法解析私钥文件」,用户完全不知道是密钥类型不支持
+    /// 还是 passphrase 打错了(issue #12)。
+    static func failureReason(forOpenSSH text: String, passphraseProvided: Bool) -> ConversionError {
+        do {
+            switch try SSHKeyDetection.detectPrivateKeyType(from: text) {
+            case .ecdsaP256, .ecdsaP384, .ecdsaP521:
+                return .unsupportedAlgorithm("ECDSA")
+            default:
+                break
+            }
+        } catch SSHKeyDetectionError.unsupportedKeyType(let type) {
+            return .unsupportedAlgorithm(type ?? String(localized: "该类型"))
+        } catch {
+            return .malformedDER
+        }
+        // 类型本身支持。怪罪口令之前先看容器到底加没加密(cipher 名是明文的):
+        // 未加密还解析失败 = 文件坏了;报「口令不对」会把用户支去改口令,南辕北辙。
+        // Citadel 只解 aes128-ctr/aes256-ctr,其它 cipher(如 chacha20)口令再对也解不开。
+        switch opensshCipherName(of: text) {
+        case nil:
+            return .malformedDER
+        case "none":
+            return .malformedDER
+        case "aes128-ctr", "aes256-ctr":
+            return passphraseProvided ? .wrongPassphrase : .missingPassphrase
+        case .some(let cipher):
+            return .unsupportedPEMCipher(cipher)
+        }
+    }
+
+    /// 读 openssh-key-v1 头部的 ciphername(magic 后第一个 SSH string,明文)
+    private static func opensshCipherName(of text: String) -> String? {
+        guard let block = pemBlock(in: text), block.label == "OPENSSH PRIVATE KEY" else { return nil }
+        let magic = Array("openssh-key-v1\0".utf8)
+        let bytes = [UInt8](block.der)
+        guard bytes.count > magic.count + 4, Array(bytes.prefix(magic.count)) == magic else { return nil }
+        var offset = magic.count
+        let length = bytes[offset..<(offset + 4)].reduce(0) { ($0 << 8) | Int($1) }
+        offset += 4
+        guard length > 0, length <= 64, offset + length <= bytes.count else { return nil }
+        return String(decoding: bytes[offset..<(offset + length)], as: UTF8.self)
     }
 
     // MARK: - PEM 拆解

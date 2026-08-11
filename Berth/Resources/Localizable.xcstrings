@@ -21,6 +21,16 @@
         }
       }
     },
+    "%@ 要求补充认证信息(如 MFA 动态验证码)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ requires additional authentication (such as an MFA verification code)."
+          }
+        }
+      }
+    },
     "%@%@": {
       "localizations": {
         "en": {
@@ -3293,6 +3303,16 @@
         }
       }
     },
+    "已取消交互式认证。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Interactive authentication was cancelled."
+          }
+        }
+      }
+    },
     "已取消连接:你没有信任该服务器的主机密钥。": {
       "localizations": {
         "en": {
@@ -3833,6 +3853,16 @@
         }
       }
     },
+    "提交": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submit"
+          }
+        }
+      }
+    },
     "搜索主机": {
       "localizations": {
         "en": {
@@ -4009,6 +4039,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "New Trigger"
+          }
+        }
+      }
+    },
+    "新建连接(⌘ 点按)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Connection (⌘-click)"
           }
         }
       }
@@ -4380,6 +4420,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "The server closed the connection during handshake — your IP most likely triggered rate limiting on %@"
+          }
+        }
+      }
+    },
+    "服务器拒绝了密码与交互式认证。请检查密码,或确认服务器允许 password / keyboard-interactive 登录。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server rejected both password and interactive authentication. Check the password, or confirm the server allows password / keyboard-interactive login."
+          }
+        }
+      }
+    },
+    "服务器要求交互式输入(如 MFA 动态码),当前平台暂不支持该输入界面。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The server requires interactive input (such as an MFA verification code), which is not yet supported on this platform."
+          }
+        }
+      }
+    },
+    "服务器请求交互式认证": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server Requests Interactive Authentication"
           }
         }
       }
@@ -5514,6 +5584,16 @@
         }
       }
     },
+    "等待交互式认证(MFA)…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Waiting for interactive authentication (MFA)…"
+          }
+        }
+      }
+    },
     "等待身份验证(Touch ID)…": {
       "localizations": {
         "en": {
@@ -6054,6 +6134,16 @@
         }
       }
     },
+    "该主机设了密钥认证,但没有指定私钥文件。请在主机设置里选一把密钥,或改用密码认证。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This host is set to key authentication but no private key file is specified. Pick a key in the host settings, or switch to password authentication."
+          }
+        }
+      }
+    },
     "该分屏有正在运行的本地 Shell。": {
       "localizations": {
         "en": {
@@ -6260,6 +6350,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Follow System"
+          }
+        }
+      }
+    },
+    "跳到终端当前目录:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jump to the terminal’s current directory: %@"
           }
         }
       }
@@ -6490,6 +6590,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This private key has a passphrase — enter it below as well."
+          }
+        }
+      }
+    },
+    "这把私钥有 passphrase,请填写后重试。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This private key has a passphrase. Enter it and try again."
           }
         }
       }

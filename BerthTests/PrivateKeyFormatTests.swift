@@ -94,6 +94,33 @@ final class PrivateKeyFormatTests: XCTestCase {
         }
     }
 
+    /// OpenSSH 容器里的 ECDSA 能过归一化(原样放行),要到解析这步才失败 ——
+    /// 那时必须还能说清是「不支持 ECDSA」,而不是笼统的「无法解析私钥文件」(issue #12)
+    func testDiagnosesOpenSSHECDSA() throws {
+        let key = try GeneratedKey(mode: nil, type: "ecdsa")
+        let normalized = try PrivateKeyFormat.normalized(key.privateText, passphrase: nil)
+
+        XCTAssertNil(try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text), "前提:ed25519 解析器吃不下")
+        XCTAssertNil(try? Insecure.RSA.PrivateKey(sshRsa: normalized.text), "前提:RSA 解析器吃不下")
+        XCTAssertEqual(
+            PrivateKeyFormat.failureReason(forOpenSSH: normalized.text, passphraseProvided: false),
+            .unsupportedAlgorithm("ECDSA")
+        )
+    }
+
+    /// 带 passphrase 的 ed25519 口令填错:该报口令不对,而不是密钥类型不支持
+    func testDiagnosesWrongPassphrase() throws {
+        let key = try GeneratedKey(mode: nil, type: "ed25519", passphrase: "berth-spike")
+        let normalized = try PrivateKeyFormat.normalized(key.privateText, passphrase: "wrong")
+
+        XCTAssertNil(try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text,
+                                                        decryptionKey: Data("wrong".utf8)))
+        XCTAssertEqual(
+            PrivateKeyFormat.failureReason(forOpenSSH: normalized.text, passphraseProvided: true),
+            .wrongPassphrase
+        )
+    }
+
     func testRejectsPublicKeyWithNamedError() throws {
         let key = try GeneratedKey(mode: nil)
         XCTAssertThrowsError(try PrivateKeyFormat.normalized(key.publicLine, passphrase: nil)) { error in

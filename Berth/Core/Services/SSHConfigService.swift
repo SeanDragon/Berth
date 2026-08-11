@@ -157,18 +157,25 @@ final class SSHConfigService {
             } else if let identityFile = entry.identityFile {
                 host.authMethod = .privateKeyFile
                 host.privateKeyPath = identityFile
-            } else {
+            } else if let fallback = defaultIdentityFile() {
                 host.authMethod = .privateKeyFile
-                host.privateKeyPath = defaultIdentityFile()
+                host.privateKeyPath = fallback
+            } else {
+                // ~/.ssh 里没有可用的默认钥匙:按密码认证导入,否则连接时会拿着
+                // 空路径去解析私钥,报一句莫名其妙的「无法解析私钥文件」
+                host.authMethod = .password
+                host.privateKeyPath = nil
             }
             host.note = entry.proxyJump.map { String(localized: "ProxyJump \($0)(跳板机连接将在后续版本支持)") } ?? ""
             return host
         }
     }
 
-    /// config 未指定 IdentityFile 时,按 ssh 默认顺序找一把存在的钥匙
+    /// config 未指定 IdentityFile 时,按 ssh 默认顺序找一把存在的钥匙。
+    /// 不含 id_ecdsa:Berth 用不了 ECDSA,配上去只会在连接时报「不支持」——
+    /// 还不如让这台主机回落到密码认证(issue #12)。
     private func defaultIdentityFile() -> String? {
-        let candidates = ["id_ed25519", "id_ecdsa", "id_rsa"]
+        let candidates = ["id_ed25519", "id_rsa"]
         for name in candidates {
             let path = sshDirectory + "/" + name
             if FileManager.default.fileExists(atPath: path) { return path }

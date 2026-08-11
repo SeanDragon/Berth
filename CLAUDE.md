@@ -79,6 +79,13 @@ BERTH_M1_AUTOTEST=1 BERTH_TRANSIENT_STORE=1 \
   - [x] SFTP 侧边文件面板 + 拖拽上传下载(复用会话连接;`BERTH_SFTP_AUTOTEST` 真机跑通往返)
   - [x] 本地 Shell(issue #3):SwiftTerm LocalProcess 本地 PTY 会话,复用标签/分屏/主题/广播/AI 面板(本地 exec 走 Process)。入口:⇧⌘T、⌘K、⌘P、标签条「+」、空状态按钮;设置可自定义 shell 路径(留空=登录 shell);⌥⌘L 在任意会话旁混合分屏本地 Shell;拖文件到本地 pane 插入转义路径(SSH pane 仍走 SFTP 上传)。SSH 专属面板(SFTP/Docker/⌘I)对本地会话隐藏。`BERTH_LOCAL_AUTOTEST=1` 自动化验收;`BERTH_WINDOW_SNAPSHOT` 免录屏权限窗口自截图。标题栏整行给标签(会话信息/生产警戒移到底部状态栏,点按开 ⌘I),标签双击/右键重命名
   - [x] CloudKit 同步(已并入 main):单库镜像 iCloud 私有库(容器 iCloud.com.berthssh.app,Team 99LYH6FNPS)。模型去 unique/关系 optional 化;ssh_config 镜像主机改内存态(不入库不同步,id 按 alias 决定性派生);机密走 iCloud 钥匙串共享访问组 `<team>.com.berthssh.shared` + 数据保护钥匙串同步(密码/密钥库私钥端到端加密,任一设备录入后两端直连),`kSecUseDataProtectionKeychain`;`BERTH_DISABLE_SYNC=1` 调试关闭。设置页同步状态(CloudSyncMonitor:同步中/上次同步/立即同步)。Mac+iPhone 真机双端验收通过:主机/密码同步直连、指纹确认、缺凭据补录引导、私钥文件主机转密钥库后 iOS 可连。⚠️ bundle id 为 com.berthssh.app/.ios(早期开发构建的机密已一次性迁移完毕,旧 service 迁移代码已移除)
+  - [x] keyboard-interactive 认证(issue #12 堡垒机 MFA):vendor nio-ssh 补 RFC 4256
+    (INFO_REQUEST/60 与 PK_OK 复用按内容判别)+ Citadel 多轮认证修复,详见 `vendor/PATCHES.md`。
+    password 失败自动转 kbd-int,首个不回显提示用存储密码自动作答,MFA 码弹 sheet。
+    验收:`docker/test-sshd/up-kbdint.sh`(2223)+ `BERTH_KBDINT_AUTOTEST=1` 双路径通过
+  - [x] issue #11 批次:本地 Shell PTY 初始尺寸(fork 后 child 设 TIOCSWINSZ,折行修复)、
+    分屏拖分割线调比例(双击复位)、SFTP 初始目录跟随 pane(OSC 7)、侧栏 ⌘点按/右键
+    对同主机再开连接(复用 SSH 连接)
   - [ ] 本地回显(predictive echo)完整版 —— 触及 SwiftTerm 渲染,需交互测延迟,暂缓
 - [~] M6 — iOS 版(`BerthiOS` target,`xcodegen generate` 后用
   `xcodebuildmcp simulator build-and-run --project-path Berth.xcodeproj --scheme BerthiOS --simulator-name "iPhone 17 Pro Max"`):
