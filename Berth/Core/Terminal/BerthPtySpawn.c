@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <util.h>
 
@@ -9,7 +10,9 @@ pid_t berth_pty_spawn(const char *executable,
                       char *const argv[],
                       char *const envp[],
                       const char *slave_path,
-                      const char *working_dir)
+                      const char *working_dir,
+                      unsigned short rows,
+                      unsigned short cols)
 {
     pid_t pid = fork();
     if (pid != 0) {
@@ -33,6 +36,16 @@ pid_t berth_pty_spawn(const char *executable,
     /* setsid + TIOCSCTTY + dup2 到 0/1/2(+关闭原 fd):shell 拿到完整作业控制 */
     if (login_tty(fd) < 0) {
         _exit(126);
+    }
+
+    /* 窗口尺寸:必须等 slave 打开后才设得上(见头文件);此刻 fd 0 即控制终端 */
+    if (rows > 0 && cols > 0) {
+        struct winsize size;
+        size.ws_row = rows;
+        size.ws_col = cols;
+        size.ws_xpixel = 0;
+        size.ws_ypixel = 0;
+        (void)ioctl(0, TIOCSWINSZ, &size);
     }
 
     if (working_dir != NULL) {

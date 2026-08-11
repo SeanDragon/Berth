@@ -36,6 +36,11 @@ enum LocalShellAcceptanceTest {
         mark(text.contains("BERTH_LOCAL_42") ? "ECHO_EVAL_OK" : "ECHO_EVAL_MISSING")
         dump(session, to: dumpBase + ".first")
 
+        // 2b. 窗口尺寸:shell 侧 stty size 必须与视图一致(issue #11-1 回归)。
+        // 曾经在 fork 前对 master 设 TIOCSWINSZ,macOS 上必然失败,shell 以 0×0 启动
+        // 退回 80×24 折行 —— 画面 163 列却按 80 列换行。
+        mark(await winSizeVerdict(session, label: "WINSIZE_FIRST"))
+
         // 3. 分屏:应新建第二个本地会话
         manager.splitFocused(axis: .horizontal)
         guard let second = manager.selected, second.id != session.id else {
@@ -56,6 +61,9 @@ enum LocalShellAcceptanceTest {
             return
         }
         mark("LOCAL_SPLIT_CONNECTED sessions=\(manager.sessions.count)")
+        // 分屏后新 pane 更窄,尺寸同样要对上(且原 pane 收到 SIGWINCH 后也要更新)
+        mark(await winSizeVerdict(third, label: "WINSIZE_SPLIT"))
+        mark(await winSizeVerdict(session, label: "WINSIZE_RESIZED"))
         try? await Task.sleep(for: .seconds(1))
         third.sendText("exit\n")
         guard await waitFor(timeout: 5, { manager.sessions.count == 2 }) else {
@@ -141,6 +149,30 @@ enum LocalShellAcceptanceTest {
             try? await Task.sleep(for: .milliseconds(200))
         }
         return condition()
+    }
+
+    /// 让 shell 自报 `stty size`,与视图的 rows×cols 比对
+    private static func winSizeVerdict(_ session: TerminalSession, label: String) async -> String {
+        let term = session.terminalView.getTerminal()
+        let expected = "\(term.rows)_\(term.cols)"
+        session.sendText("printf 'STTY_%s_%s\\n' $(stty size)\n")
+        try? await Task.sleep(for: .seconds(1.2))
+        guard let reported = lastReportedSize(in: bufferText(session)) else {
+            return "\(label)_NO_OUTPUT view=\(expected)"
+        }
+        return reported == expected
+            ? "\(label)_OK \(expected)"
+            : "\(label)_MISMATCH view=\(expected) pty=\(reported)"
+    }
+
+    /// 取最后一个 STTY_<rows>_<cols>(命令行回显里是 %s 占位,不会误匹配)
+    private static func lastReportedSize(in text: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: "STTY_([0-9]+)_([0-9]+)") else { return nil }
+        let ns = text as NSString
+        guard let last = regex.matches(in: text, range: NSRange(location: 0, length: ns.length)).last else {
+            return nil
+        }
+        return "\(ns.substring(with: last.range(at: 1)))_\(ns.substring(with: last.range(at: 2)))"
     }
 
     private static func bufferText(_ session: TerminalSession) -> String {

@@ -14,12 +14,18 @@
 /// 全部在 async-signal-safe 白名单内,参数由调用方在 fork 前备好。
 /// 这与 Terminal.app / node-pty / kitty 的做法一致。
 ///
+/// 窗口尺寸(rows/cols)也在 child 里设:macOS 上 slave 打开之前对 master 调
+/// TIOCSWINSZ 会 ENOTTY 失败(实测 errno=25),shell 于是以 0×0 启动、退回内置
+/// 默认 80×24 折行。child 段 login_tty 之后 fd 0 就是控制终端,这时设才生效。
+///
 /// 返回 fork 的 pid(父进程视角);-1 = fork 失败。子进程 exec 失败以 127 退出,
 /// slave 打开/login_tty 失败以 126 退出。
 pid_t berth_pty_spawn(const char *executable,
                       char *const argv[],
                       char *const envp[],
                       const char *slave_path,
-                      const char *working_dir);
+                      const char *working_dir,
+                      unsigned short rows,
+                      unsigned short cols);
 
 #endif

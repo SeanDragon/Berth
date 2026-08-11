@@ -36,6 +36,11 @@ final class LocalPty: @unchecked Sendable {
     private var exited = false
     private var exitHandler: (@MainActor () -> Void)?
     private let readQueue = DispatchQueue(label: "berth.localpty.read")
+    /// 最近一次请求的窗口尺寸(readQueue 上读写)。fork 后到 child login_tty 前这段
+    /// 窗口期,父进程对 master 的 TIOCSWINSZ 要么 ENOTTY 失败要么被 child 的
+    /// 初始化 ioctl 盖掉 —— 首次收到输出(child 必然已挂上 slave)时重放一次兜底。
+    private var lastRequestedSize: (cols: Int, rows: Int)?
+    private var replayedInitialSize = false
 
     init(
         executable: String,
@@ -52,9 +57,9 @@ final class LocalPty: @unchecked Sendable {
             throw SpawnError.pty(errno)
         }
         let slavePath = String(cString: slaveCString)
-        var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
-        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: master, windowSize: &size)
 
+        // 初始窗口尺寸交给 child 设:slave 打开之前对 master 调 TIOCSWINSZ 在 macOS 上
+        // 必然 ENOTTY 失败,shell 会以 0×0 启动(zsh 退回 80×24),表现为折行列数不对。
         // fork 前把 child 需要的一切备成 C 内存,child 段零分配
         var argv: [UnsafeMutablePointer<CChar>?] = [strdup(execName), nil]
         var envp: [UnsafeMutablePointer<CChar>?] = environment.map { strdup($0) } + [nil]
@@ -63,7 +68,10 @@ final class LocalPty: @unchecked Sendable {
             envp.compactMap { $0 }.forEach { free($0) }
         }
 
-        let child = berth_pty_spawn(executable, &argv, &envp, slavePath, directory)
+        let child = berth_pty_spawn(
+            executable, &argv, &envp, slavePath, directory,
+            UInt16(max(0, rows)), UInt16(max(0, cols))
+        )
         guard child > 0 else {
             close(master)
             throw SpawnError.spawn(errno)
@@ -94,6 +102,7 @@ final class LocalPty: @unchecked Sendable {
 
     func resize(cols: Int, rows: Int) {
         guard masterFD >= 0 else { return }
+        readQueue.async { [self] in lastRequestedSize = (cols, rows) }
         var size = winsize(ws_row: UInt16(rows), ws_col: UInt16(cols), ws_xpixel: 0, ws_ypixel: 0)
         _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: masterFD, windowSize: &size)
     }
@@ -125,6 +134,14 @@ final class LocalPty: @unchecked Sendable {
         channel.read(offset: 0, length: 128 * 1024, queue: readQueue) { [weak self] done, data, error in
             guard let self else { return }
             if let data, !data.isEmpty {
+                // 首次输出 = child 必然已 login_tty:重放窗口期可能丢失/被盖的尺寸
+                if !self.replayedInitialSize {
+                    self.replayedInitialSize = true
+                    if let size = self.lastRequestedSize, self.masterFD >= 0 {
+                        var ws = winsize(ws_row: UInt16(size.rows), ws_col: UInt16(size.cols), ws_xpixel: 0, ws_ypixel: 0)
+                        _ = PseudoTerminalHelpers.setWinSize(masterPtyDescriptor: self.masterFD, windowSize: &ws)
+                    }
+                }
                 let bytes = [UInt8](data)
                 DispatchQueue.main.async {
                     MainActor.assumeIsolated { self.onData?(bytes) }
