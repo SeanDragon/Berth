@@ -80,6 +80,8 @@ struct StatusBarView: View {
             )
         }
         .padding(.horizontal, 10)
+        // 悬浮胶囊与上方终端 pane 之间留出间距,否则贴着 pane 下边框
+        .padding(.top, 8)
         .padding(.bottom, 14)
         .task(id: session.id) {
             // 资源轮询:连接中每 5s 拉一次;断开时清空,避免残留旧数据

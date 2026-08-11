@@ -100,6 +100,8 @@ struct RaisedCapsule: View {
 /// 只在 macOS 26 生效,AppKit 层新老系统行为一致。
 struct PressMouseLayer: NSViewRepresentable {
     let onPress: () -> Void
+    /// ⌘ 点按(没给就退回 onPress):侧栏用它「再开一条同主机连接」
+    var onCommandPress: (() -> Void)?
     var onDoubleClick: (() -> Void)?
     var onDragChanged: ((CGFloat) -> Void)?
     var onDragEnded: (() -> Void)?
@@ -116,6 +118,7 @@ struct PressMouseLayer: NSViewRepresentable {
 
     private func update(_ view: MouseView) {
         view.onPress = onPress
+        view.onCommandPress = onCommandPress
         view.onDoubleClick = onDoubleClick
         view.onDragChanged = onDragChanged
         view.onDragEnded = onDragEnded
@@ -123,6 +126,7 @@ struct PressMouseLayer: NSViewRepresentable {
 
     final class MouseView: NSView {
         var onPress: (() -> Void)?
+        var onCommandPress: (() -> Void)?
         var onDoubleClick: (() -> Void)?
         var onDragChanged: ((CGFloat) -> Void)?
         var onDragEnded: (() -> Void)?
@@ -140,6 +144,10 @@ struct PressMouseLayer: NSViewRepresentable {
             dragging = false
             if event.clickCount == 2, let onDoubleClick {
                 onDoubleClick()
+            } else if event.clickCount == 1, event.modifierFlags.contains(.command), let onCommandPress {
+                // 仅首击触发:⌘ 双击的第二击(clickCount==2 且无 onDoubleClick)落到这里
+                // 会把动作触发两次(侧栏一个手势开出两条连接)
+                onCommandPress()
             } else {
                 onPress?()  // 首击已选中,拖拽/连击都落在已选中的目标上
             }

@@ -56,7 +56,7 @@ struct SidebarView: View {
             } else {
                 hostList
             }
-            Divider().overlay(theme.borderColor)
+            // 底部工具行与右侧悬浮状态栏同一水平线,分隔线画上去反而突兀
             keysRow
         }
         // 透明 chrome:不刷不透明底,让 NavigationSplitView 原生的 behind-window
@@ -175,8 +175,14 @@ struct SidebarView: View {
                             isSelected: selectedHostID == host.id,
                             theme: theme
                         )
-                        // 按下即选中(AppKit 层,无手势判定延迟);右键仍走 .contextMenu
-                        .overlay { PressMouseLayer(onPress: { activate(host) }) }
+                        // 按下即选中(AppKit 层,无手势判定延迟);⌘ 点按再开一条同主机
+                        // 连接;右键仍走 .contextMenu
+                        .overlay {
+                            PressMouseLayer(
+                                onPress: { activate(host) },
+                                onCommandPress: { connect(host) }
+                            )
+                        }
                         .contextMenu { hostMenu(host) }
                     }
                 }
@@ -195,7 +201,8 @@ struct SidebarView: View {
 
     @ViewBuilder
     private func hostMenu(_ host: Host) -> some View {
-        Button("连接") { connect(host) }
+        // 单击是「切过去」,这里明确是「再开一条」——同一台主机可以开多个标签
+        Button("新建连接(⌘ 点按)") { connect(host) }
         Button("复制 IP") { copyToPasteboard(host.hostname) }
         Button("复制用户名") { copyToPasteboard(host.username) }
         Button("复制 ssh 命令") { copyToPasteboard(sshCommand(for: host)) }
@@ -261,7 +268,9 @@ struct SidebarView: View {
             SettingsIconLink()
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 3)
+        // 与右侧终端底部的悬浮状态栏同高同底距,两边内容横向对齐成一条线
+        .frame(height: 28)
+        .padding(.bottom, 14)
     }
 
     /// config 里出现了没在导入面板见过的主机时,给一条可点的轻提示(而不是自己冒出来)
@@ -343,7 +352,10 @@ struct SidebarView: View {
         connect(host)
     }
 
-    /// 明确要「再开一个」:右键菜单、⌘K 等
+    /// 明确要「再开一个」:⌘ 点按、右键菜单、⌘K 等。总是新拨号,不借用旧连接 ——
+    /// 旧会话的 spec 可能已过时(主机编辑后 hostID 不变),借用会静默连到老端点;
+    /// 断网后的假活连接(state 还是 connected)借来也只会失败且不自动重连。
+    /// 想复用连接开新 PTY 用 ⌘T(复制当前连接)。
     private func connect(_ host: Host) {
         selectedHostID = host.id
         host.lastConnectedAt = Date()

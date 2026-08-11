@@ -2,7 +2,9 @@ import AppKit
 
 /// 窗口自截图:BERTH_WINDOW_SNAPSHOT=<png 路径> 时,启动后延时把主窗口(含标题栏)渲染成 PNG。
 /// 走 NSView 自身的 cacheDisplay(app 画自己的视图层级),无需屏幕录制权限;
-/// BERTH_SNAPSHOT_OPEN_LOCAL=1 可先开一个本地 Shell 再截。给自动化验收看界面用。
+/// BERTH_SNAPSHOT_OPEN_LOCAL=1 可先开一个本地 Shell 再截;
+/// BERTH_SNAPSHOT_SPLIT=0.7 再左右分屏一个本地 Shell 并把分割比例设成 0.7。
+/// 给自动化验收看界面用。
 @MainActor
 enum WindowSnapshot {
     static func runIfRequested() async {
@@ -16,6 +18,15 @@ enum WindowSnapshot {
             try? await Task.sleep(for: .seconds(1))
             for _ in 0..<count {
                 _ = SessionManager.shared.open(spec: .localShell())
+            }
+        }
+        // 分屏 + 指定比例:验证分割线拖拽后的布局(issue #11-2)
+        if let ratio = Double(env["BERTH_SNAPSHOT_SPLIT"] ?? "") {
+            try? await Task.sleep(for: .seconds(1))
+            let manager = SessionManager.shared
+            manager.splitFocusedLocalShell(axis: .horizontal)
+            if let tab = manager.selectedTab, case .branch(let id, _, _, _) = tab.root {
+                tab.setRatio(ratio, for: id)
             }
         }
         let delay = Double(env["BERTH_SNAPSHOT_DELAY"] ?? "3") ?? 3

@@ -81,9 +81,22 @@ final class PaneTab: Identifiable {
     var isBroadcasting = false
     /// 用户自定义标签名(双击/右键 chip 重命名);nil = 跟随聚焦会话的主机名
     var customTitle: String?
+    /// 各分支的分割比例(branch id → first 侧占比),缺省 0.5。
+    /// 放在标签上而不是塞进 PaneNode:树的增删改(splitting/removing)不必关心比例,
+    /// 塌缩掉的分支留下的条目也无害
+    private var ratios: [UUID: Double] = [:]
 
     init(sessionID: UUID) {
         self.root = .leaf(sessionID)
         self.focusedID = sessionID
     }
+
+    /// 某分支 first 侧的占比;未拖过就是对半
+    func ratio(of branchID: UUID) -> Double { ratios[branchID] ?? 0.5 }
+
+    func setRatio(_ value: Double, for branchID: UUID) {
+        ratios[branchID] = min(max(value, 0.05), 0.95)
+    }
+
+    func resetRatio(for branchID: UUID) { ratios[branchID] = nil }
 }

@@ -39,10 +39,13 @@ final class SFTPBrowser {
 
     private var sftp: SFTPClient?
     private let opener: () async throws -> SFTPClient
+    /// 打开后首先落在哪个目录(取该 pane 终端的当前目录);nil 或列不出来时回落 home
+    private let initialPath: String?
     /// 面板已关闭:打开中(await opener)被关时,迟到的 client 要立即关掉,不能泄漏子通道
     private var isClosed = false
 
-    init(opener: @escaping () async throws -> SFTPClient) {
+    init(initialPath: String? = nil, opener: @escaping () async throws -> SFTPClient) {
+        self.initialPath = initialPath
         self.opener = opener
     }
 
@@ -70,7 +73,13 @@ final class SFTPBrowser {
             sftp = client
             let home = (try? await client.getRealPath(atPath: ".")) ?? "/"
             homePath = home
-            await list(path: home)
+            // 优先落在该 pane 终端的当前目录;那个目录可能已被删/无权限,失败就回落 home
+            if let initialPath, initialPath != home {
+                await list(path: initialPath)
+                if case .failed = state { await list(path: home) }
+            } else {
+                await list(path: home)
+            }
         } catch {
             // 看门狗超时置败后,opening 被 cancel 抛错到这里,不要覆盖超时提示
             if state == .loading { state = .failed(friendly(error)) }

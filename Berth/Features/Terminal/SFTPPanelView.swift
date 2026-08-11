@@ -53,7 +53,11 @@ struct SFTPPanelView: View {
             handleDrop(providers)
         }
         .task(id: session.id) {
-            let browser = SFTPBrowser { try await session.openSFTP() }
+            // 初始目录跟随该 pane 终端的当前目录(OSC 7 报上来的),而不是一律 home。
+            // 切到别的分屏时面板整体重建,于是自然跟着那个 pane 走。
+            let browser = SFTPBrowser(initialPath: session.currentRemoteDirectory) {
+                try await session.openSFTP()
+            }
             self.browser = browser
             await browser.start()
         }
@@ -130,6 +134,20 @@ struct SFTPPanelView: View {
                     .help(String(localized: "点按输入路径(支持 ~ 与相对路径)"))
             }
             Spacer()
+            // 跟随终端:面板停在别处时,一键跳回该 pane 的当前目录。
+            // 仅 ready 时显示:失败/加载中点了也只会在 guard let sftp 上无声打空
+            if browser?.state == .ready,
+               let terminalDir = session.currentRemoteDirectory, terminalDir != browser?.path {
+                Button {
+                    Task { await browser?.navigate(to: terminalDir) }
+                } label: {
+                    Image(systemName: "location.circle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("跳到终端当前目录:\(terminalDir)")
+            }
             // 书签菜单
             Menu {
                 Button(browser?.isCurrentBookmarked == true ? "取消收藏此目录" : "收藏此目录") {

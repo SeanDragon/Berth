@@ -358,11 +358,20 @@ final class SessionManager {
         case .leaf(let sessionID):
             guard let spec = session(sessionID)?.spec else { return nil }
             return .leaf(hostID: spec.hostID)
-        case .branch(_, let axis, let a, let b):
+        case .branch(let branchID, let axis, let a, let b):
             switch (encodeNode(a), encodeNode(b)) {
             case (nil, nil): return nil
             case (let x?, nil), (nil, let x?): return x
-            case (let x?, let y?): return .split(axis: axis == .horizontal ? "h" : "v", first: x, second: y)
+            case (let x?, let y?):
+                // 拖过的分割比例一并存(0.5 不存,省字段)
+                let tab = tabs.first { $0.root.leafIDs().contains(node.firstLeaf) }
+                let ratio = tab.map { $0.ratio(of: branchID) }
+                return .split(
+                    axis: axis == .horizontal ? "h" : "v",
+                    ratio: ratio == 0.5 ? nil : ratio,
+                    first: x,
+                    second: y
+                )
             }
         }
     }
@@ -387,14 +396,14 @@ final class SessionManager {
         switch node {
         case .leaf(let hostID):
             return hosts.first { $0.id == hostID }
-        case .split(_, let a, let b):
+        case .split(_, _, let a, let b):
             return firstResolvableHost(a, hosts: hosts) ?? firstResolvableHost(b, hosts: hosts)
         }
     }
 
     /// 递归补分屏:existingLeaf 代表 node 的 first-leaf 位置已存在的会话
     private func buildSplits(_ node: WorkspaceLayout.Node, existingLeaf: UUID, in tab: PaneTab, hosts: [Host]) {
-        guard case .split(let axisRaw, let a, let b) = node else { return }
+        guard case .split(let axisRaw, let ratio, let a, let b) = node else { return }
         guard let bHost = firstResolvableHost(b, hosts: hosts) else {
             buildSplits(a, existingLeaf: existingLeaf, in: tab, hosts: hosts)
             return
@@ -411,7 +420,9 @@ final class SessionManager {
             self.closePane(secondary)
         }
         sessions.append(secondary)
-        tab.root = tab.root.splitting(leaf: existingLeaf, into: secondary.id, axis: axis, branchID: UUID())
+        let branchID = UUID()
+        tab.root = tab.root.splitting(leaf: existingLeaf, into: secondary.id, axis: axis, branchID: branchID)
+        if let ratio { tab.setRatio(ratio, for: branchID) }
         secondary.connect()
         buildSplits(a, existingLeaf: existingLeaf, in: tab, hosts: hosts)
         buildSplits(b, existingLeaf: secondary.id, in: tab, hosts: hosts)

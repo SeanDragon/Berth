@@ -24,7 +24,9 @@ final class Workspace {
 struct WorkspaceLayout: Codable, Equatable {
     indirect enum Node: Codable, Equatable {
         case leaf(hostID: UUID)
-        case split(axis: String, first: Node, second: Node)   // axis: "h" | "v"
+        // axis: "h" | "v";ratio = first 侧占比,nil = 对半。
+        // Optional 关联值缺字段时解码为 nil,旧模板 JSON 无需迁移
+        case split(axis: String, ratio: Double?, first: Node, second: Node)
     }
 
     var tabs: [Node]
@@ -33,7 +35,7 @@ struct WorkspaceLayout: Codable, Equatable {
         func count(_ node: Node) -> Int {
             switch node {
             case .leaf: return 1
-            case .split(_, let a, let b): return count(a) + count(b)
+            case .split(_, _, let a, let b): return count(a) + count(b)
             }
         }
         return tabs.reduce(0) { $0 + count($1) }

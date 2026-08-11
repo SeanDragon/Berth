@@ -30,6 +30,7 @@ struct TerminalTabsView: View {
                     // 单 pane 不显示焦点边框(只有分屏时才需要区分)
                     PaneTreeView(
                         node: tab.root,
+                        tab: tab,
                         focusedID: tab.focusedID,
                         showsFocus: tab.root.leafIDs().count > 1,
                         broadcasting: tab.isBroadcasting
@@ -398,14 +399,23 @@ struct TerminalTabsView: View {
     }
 }
 
-/// 分屏树递归视图:叶子=一个终端 pane(可点按聚焦、聚焦有强调边框),分支=按方向二分
+/// 分屏树递归视图:叶子=一个终端 pane(可点按聚焦、聚焦有强调边框),分支=按方向二分。
+/// 分支按 tab 上记录的比例分配,分割线可拖(双击复位对半)。
 private struct PaneTreeView: View {
     let node: PaneNode
+    let tab: PaneTab
     let focusedID: UUID
     var showsFocus: Bool = true
     var broadcasting: Bool = false
     let onFocus: (UUID) -> Void
     @Environment(SessionManager.self) private var sessionManager
+
+    /// 分割线占位厚度:可见线只有 1pt,但抓取带必须自己占住布局 ——
+    /// 靠 overlay 往两侧溢出是抓不着的,那片区域压在终端 NSView 上,
+    /// AppKit 命中测试会把鼠标事件判给终端
+    private static let dividerThickness: CGFloat = 6
+    /// 每侧至少留这么多点,拖到头也不会把 pane 压没
+    private static let minPaneLength: CGFloat = 120
 
     var body: some View {
         switch node {
@@ -423,18 +433,59 @@ private struct PaneTreeView: View {
             } else {
                 Color.clear
             }
-        case .branch(_, let axis, let first, let second):
-            let layout = axis == .horizontal
-                ? AnyLayout(HStackLayout(spacing: 1))
-                : AnyLayout(VStackLayout(spacing: 1))
-            layout {
-                PaneTreeView(node: first, focusedID: focusedID, showsFocus: showsFocus, broadcasting: broadcasting, onFocus: onFocus)
-                Rectangle()
-                    .fill(ThemeStore.shared.current.borderColor)
-                    .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
-                PaneTreeView(node: second, focusedID: focusedID, showsFocus: showsFocus, broadcasting: broadcasting, onFocus: onFocus)
+        case .branch(let branchID, let axis, let first, let second):
+            GeometryReader { proxy in
+                let total = axis == .horizontal ? proxy.size.width : proxy.size.height
+                let available = max(total - Self.dividerThickness, 1)
+                // 布局时也按最小 pane 尺寸夹取:拖拽路径的下限只约束当时的窗口宽度,
+                // 大窗口拖到 0.94 再缩小窗口,原比例会把另一侧压成几十点的废纸条
+                let raw = (available * tab.ratio(of: branchID)).rounded()
+                let firstLength = available > Self.minPaneLength * 2
+                    ? min(max(raw, Self.minPaneLength), available - Self.minPaneLength)
+                    : raw
+                let layout = axis == .horizontal
+                    ? AnyLayout(HStackLayout(spacing: 0))
+                    : AnyLayout(VStackLayout(spacing: 0))
+                layout {
+                    subtree(first)
+                        .frame(
+                            width: axis == .horizontal ? firstLength : nil,
+                            height: axis == .vertical ? firstLength : nil
+                        )
+                    PaneDivider(
+                        axis: axis,
+                        thickness: Self.dividerThickness,
+                        // 按字符格步进:格内的位移不改变终端行列数,却会让 SwiftTerm
+                        // 每帧重排一次(带滚动回卷的重排很贵),拖起来就是一顿一顿的
+                        step: cellStep(axis: axis, of: first),
+                        onDrag: { delta in
+                            let target = (firstLength + delta) / available
+                            let floor = min(Self.minPaneLength / available, 0.5)
+                            tab.setRatio(min(max(target, floor), 1 - floor), for: branchID)
+                        },
+                        onReset: { tab.resetRatio(for: branchID) }
+                    )
+                    subtree(second)
+                }
             }
         }
+    }
+
+    /// 该侧终端一个字符格的大小(拖拽步进用);取不到就给个保守值
+    private func cellStep(axis: SplitAxis, of node: PaneNode) -> CGFloat {
+        guard let view = sessionManager.session(node.firstLeaf)?.terminalView else { return 8 }
+        let terminal = view.getTerminal()
+        if axis == .horizontal {
+            return max(view.frame.width / CGFloat(max(terminal.cols, 1)), 4)
+        }
+        return max(view.frame.height / CGFloat(max(terminal.rows, 1)), 8)
+    }
+
+    private func subtree(_ child: PaneNode) -> some View {
+        PaneTreeView(
+            node: child, tab: tab, focusedID: focusedID,
+            showsFocus: showsFocus, broadcasting: broadcasting, onFocus: onFocus
+        )
     }
 
     private func borderColor(_ sid: UUID) -> Color {
@@ -442,6 +493,72 @@ private struct PaneTreeView: View {
         if broadcasting { return .orange.opacity(0.7) }
         if showsFocus, sid == focusedID { return ThemeStore.shared.current.accentColor.opacity(0.55) }
         return .clear
+    }
+}
+
+/// 可拖拽的分割线:整条抓取带自己占位(见 dividerThickness),中间画 1pt 可见线;
+/// 悬停变调整光标,双击复位对半。
+/// delta 用增量(每帧的位移差)而不是 DragGesture 的累计 translation ——
+/// 比例改了之后 firstLength 也跟着变,再用累计值算会自乘一遍,拖起来直接飞出去。
+private struct PaneDivider: View {
+    let axis: SplitAxis
+    let thickness: CGFloat
+    let step: CGFloat
+    let onDrag: (CGFloat) -> Void
+    let onReset: () -> Void
+
+    @State private var lastTranslation: CGFloat = 0
+    /// 攒够一格才提交,不足一格的位移留到下一帧
+    @State private var pending: CGFloat = 0
+    @State private var isHovering = false
+    /// 拖拽进行中:步进式移动会让光标短暂滑出抓取带,悬停态在拖拽期间要保持住,
+    /// 否则强调色和光标形状一路闪
+    @State private var isDragging = false
+
+    var body: some View {
+        Rectangle()
+            .fill(isHovering || isDragging
+                ? ThemeStore.shared.current.accentColor.opacity(0.55)
+                : ThemeStore.shared.current.borderColor)
+            .frame(width: axis == .horizontal ? 1 : nil, height: axis == .vertical ? 1 : nil)
+            .frame(width: axis == .horizontal ? thickness : nil,
+                   height: axis == .vertical ? thickness : nil)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                isHovering = inside
+                guard !isDragging else { return }
+                if inside {
+                    (axis == .horizontal ? NSCursor.resizeLeftRight : NSCursor.resizeUpDown).set()
+                } else {
+                    NSCursor.arrow.set()
+                }
+            }
+            .gesture(
+                // 必须用 .global 量位移:默认 .local 以分割线自身为参照,而分割线
+                // 拖着拖着自己就挪了 —— 参照系一移,translation 往回缩,增量算出
+                // 反向位移,布局在两个位置间来回打摆(拖拽时一片框跳动)。
+                // minimumDistance 4:双击时 1-2pt 的手抖会被 1pt 阈值当成微拖拽,
+                // 吞掉双击复位(macOS 自己的拖拽判定阈值也是 ~4pt)
+                DragGesture(minimumDistance: 4, coordinateSpace: .global)
+                    .onChanged { value in
+                        isDragging = true
+                        let current = axis == .horizontal ? value.translation.width : value.translation.height
+                        pending += current - lastTranslation
+                        lastTranslation = current
+                        let whole = (pending / step).rounded(.towardZero)
+                        guard whole != 0 else { return }
+                        onDrag(whole * step)
+                        pending -= whole * step
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        lastTranslation = 0
+                        pending = 0
+                        if !isHovering { NSCursor.arrow.set() }
+                    }
+            )
+            .onTapGesture(count: 2) { onReset() }
+            // 不挂 .help:悬停气泡会在正要拖的时候弹出来挡住分割线
     }
 }
 
@@ -702,6 +819,12 @@ struct TerminalPaneView: View {
             onDismiss: { session.resolveHostKeyPrompt(accepted: false) }
         ) { prompt in
             HostKeyPromptSheet(prompt: prompt, session: session)
+        }
+        // 注意不能挂 onDismiss 兜底取消:它在收起动画后才触发,多轮质询(密码→MFA 码)
+        // 时下一轮的 prompt/continuation 已就位,迟到的 onDismiss 会把第二轮误取消。
+        // 取消只走 sheet 内按钮;会话断开时由 teardown 统一收掉挂起的质询。
+        .sheet(item: $session.keyboardInteractivePrompt) { prompt in
+            KeyboardInteractivePromptSheet(prompt: prompt, session: session)
         }
         .sheet(item: $editingHost) { host in
             HostEditorView(host: host, defaultGroupID: nil, onConnect: { updated in
