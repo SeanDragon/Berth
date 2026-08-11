@@ -139,6 +139,9 @@ final class IOSTerminalSession {
                 let (stream, continuation) = AsyncStream.makeStream(of: StdinEvent.self)
                 await MainActor.run {
                     self.stdinWriter = continuation
+                    // 连接期间的 resize(旋转/键盘弹出)落在 writer 就位前会被丢掉,
+                    // 补发当前尺寸,远端 PTY 不再停在拨号时的旧列数
+                    _ = continuation.yield(.resize(cols: self.lastCols, rows: self.lastRows))
                     self.state = .connected
                     self.connectedAt = Date()
                     self.startPortForwards()
@@ -327,7 +330,13 @@ final class IOSTerminalSession {
                 if hop.hostID == spec.hostID { throw IOSSessionError.needsPassword }
                 return .passwordBased(username: hop.username, password: "")
             }
-            return .passwordBased(username: hop.username, password: password)
+            // password 失败自动转 keyboard-interactive(堡垒机;与 macOS 同一 delegate):
+            // 首个不回显提示用存储密码自动作答;需要人工输入(MFA 码)的质询 UI iOS 暂缺,
+            // prompter 传 nil,报 promptUnavailable 而不是装作认证失败
+            let delegate = KeyboardInteractiveAuthDelegate(
+                username: hop.username, password: password, prompter: nil
+            )
+            return .custom(delegate)
 
         case .storedKey:
             guard let keyID = hop.keyID,
@@ -339,18 +348,12 @@ final class IOSTerminalSession {
                 return .ed25519(username: hop.username, privateKey: key)
             }
             let passphrase = try KeychainStore.read(account: KeychainStore.keyPassphraseAccount(for: keyID))
-            // 同步过来的密钥可能是在 Mac 上以老式 PEM 存入的,统一先归一化
-            let normalized = try PrivateKeyFormat.normalized(material, passphrase: passphrase)
-            let decryptionKey = normalized.passphraseConsumed
-                ? nil
-                : passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
-            if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text, decryptionKey: decryptionKey) {
-                return .ed25519(username: hop.username, privateKey: key)
+            // 同步过来的密钥可能是在 Mac 上以老式 PEM 存入的;
+            // 归一化/解密/诊断统一走 parseForAuth(与 macOS、密钥导入同口径)
+            switch try PrivateKeyFormat.parseForAuth(material, passphrase: passphrase).key {
+            case .ed25519(let key): return .ed25519(username: hop.username, privateKey: key)
+            case .rsa(let key): return .rsa(username: hop.username, privateKey: key)
             }
-            if let key = try? Insecure.RSA.PrivateKey(sshRsa: normalized.text, decryptionKey: decryptionKey) {
-                return .rsa(username: hop.username, privateKey: key)
-            }
-            throw IOSSessionError.unsupportedKey
 
         case .privateKeyFile:
             throw IOSSessionError.unsupportedAuth(String(localized: "私钥文件"))

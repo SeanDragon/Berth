@@ -9,6 +9,10 @@ enum SSHErrorMapper {
         authMethod: AuthMethodKind? = nil
     ) -> String {
         let raw = String(describing: error)
+        // keyboard-interactive 的错误自带人话文案(取消 / 密码+交互式双失败),原样透出
+        if let kbi = error as? KeyboardInteractiveAuthError {
+            return kbi.errorDescription ?? raw
+        }
         if raw.localizedCaseInsensitiveContains("allAuthenticationOptionsFailed")
             || raw.localizedCaseInsensitiveContains("authentication") {
             // 按认证方式给针对性排查提示

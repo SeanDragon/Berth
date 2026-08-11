@@ -200,6 +200,33 @@ extension UserAuthenticationStateMachine {
             return
         }
     }
+
+    /// [Berth patch] RFC 4256:keyboard-interactive 在途时收到服务器质询(INFO_REQUEST)。
+    /// 交给 delegate 应答;状态保持 awaitingResponses(服务器随后回 success/failure/
+    /// 下一轮 INFO_REQUEST,都已有既有分支处理)。
+    mutating func receiveUserAuthInfoRequest(
+        _ message: SSHMessage.UserAuthInfoRequestMessage
+    ) throws -> EventLoopFuture<SSHMessage.UserAuthInfoResponseMessage>? {
+        switch (self.delegate, self.state) {
+        case (.client(let delegate), .awaitingResponses):
+            let challenge = NIOSSHKeyboardInteractiveChallenge(
+                name: message.name,
+                instruction: message.instruction,
+                languageTag: message.languageTag,
+                prompts: message.prompts.map { .init(prompt: $0.prompt, echo: $0.echo) }
+            )
+            let promise = self.loop.makePromise(of: [String].self)
+            delegate.keyboardInteractiveChallenge(challenge, responsePromise: promise)
+            return promise.futureResult.map { SSHMessage.UserAuthInfoResponseMessage(responses: $0) }
+        case (.client, .authenticationSucceeded):
+            // 认证已成功,后续认证消息一概忽略
+            return nil
+        case (.client, _):
+            throw NIOSSHError.protocolViolation(protocolName: Self.protocolName, violation: "server sent user auth info request at the wrong time")
+        case (.server, _):
+            throw NIOSSHError.protocolViolation(protocolName: Self.protocolName, violation: "client sent user auth info request")
+        }
+    }
 }
 
 // MARK: Sending Messages
@@ -256,6 +283,19 @@ extension UserAuthenticationStateMachine {
         case (.server, _):
             // Servers may never send user auth request messages.
             preconditionFailure("Servers may not authenticate")
+        }
+    }
+
+    /// [Berth patch] RFC 4256:客户端应答质询(INFO_RESPONSE)。仅在等待响应期间合法,
+    /// 状态不变(仍等 success/failure/下一轮质询)。
+    mutating func sendUserAuthInfoResponse(_: SSHMessage.UserAuthInfoResponseMessage) {
+        switch (self.delegate, self.state) {
+        case (.client, .awaitingResponses):
+            break
+        case (.client, _):
+            preconditionFailure("Sent an info response while no keyboard-interactive attempt is in flight")
+        case (.server, _):
+            preconditionFailure("Servers never send info responses")
         }
     }
 
@@ -430,6 +470,10 @@ private extension UserAuthenticationStateMachine {
 
         case .publicKey(.unknown):
             // We don't known the algorithm, the auth attempt has failed.
+            return self.loop.makeSucceededFuture(.failure(.init(authentications: delegate.supportedAuthenticationMethods.strings, partialSuccess: false)))
+
+        // [Berth patch] 服务端不支持 keyboard-interactive(Berth 只做客户端),直接判失败
+        case .keyboardInteractive:
             return self.loop.makeSucceededFuture(.failure(.init(authentications: delegate.supportedAuthenticationMethods.strings, partialSuccess: false)))
 
         case .none:

@@ -35,4 +35,20 @@ public protocol NIOSSHClientUserAuthenticationDelegate {
     ///     - availableMethods: The authentication methods the server is willing to accept.
     ///     - nextChallengePromise: An `EventLoopPromise` to be fulfilled with the next authentication offer.
     func nextAuthenticationType(availableMethods: NIOSSHAvailableUserAuthenticationMethods, nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>)
+
+    /// [Berth patch] RFC 4256 keyboard-interactive:服务器发来一轮质询(INFO_REQUEST)。
+    /// 以 `challenge.prompts` 同数量、同顺序的应答完成 `responsePromise`;失败该 promise
+    /// 会中止连接。仅在 delegate 提交过 `.keyboardInteractive` offer 后才会被调用。
+    /// 默认实现直接失败(现有 delegate 不受影响)。
+    func keyboardInteractiveChallenge(_ challenge: NIOSSHKeyboardInteractiveChallenge, responsePromise: EventLoopPromise<[String]>)
+}
+
+// [Berth patch] 默认实现:没实现质询回调的 delegate 不该提交 keyboardInteractive offer
+public extension NIOSSHClientUserAuthenticationDelegate {
+    func keyboardInteractiveChallenge(_ challenge: NIOSSHKeyboardInteractiveChallenge, responsePromise: EventLoopPromise<[String]>) {
+        responsePromise.fail(NIOSSHError.protocolViolation(
+            protocolName: "userauth",
+            violation: "delegate offered keyboard-interactive but does not implement keyboardInteractiveChallenge"
+        ))
+    }
 }

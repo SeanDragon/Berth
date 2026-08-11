@@ -42,6 +42,7 @@ final class TerminalSession: Identifiable {
 
     enum SessionError: LocalizedError {
         case unsupportedKey
+        case missingKeyFile
         case missingStoredKey
         case authenticationGateFailed
         case notConnected
@@ -52,6 +53,8 @@ final class TerminalSession: Identifiable {
             switch self {
             case .unsupportedKey:
                 return String(localized: "无法解析私钥文件:目前支持 OpenSSH 格式的 ed25519 / RSA 私钥。若密钥带 passphrase,请确认已正确填写。")
+            case .missingKeyFile:
+                return String(localized: "该主机设了密钥认证,但没有指定私钥文件。请在主机设置里选一把密钥,或改用密码认证。")
             case .missingStoredKey:
                 return String(localized: "找不到该主机引用的密钥,请在「密钥」页检查或重新选择。")
             case .authenticationGateFailed:
@@ -95,11 +98,15 @@ final class TerminalSession: Identifiable {
     @ObservationIgnored private var siUpper = 0
     @ObservationIgnored private var osc133 = OSC133Scanner()
     /// 远端当前工作目录(OSC 7 上报),重连后用于自动 cd 回去
-    @ObservationIgnored private var lastRemoteDirectory: String?
+    /// OSC 7 报上来的远端当前目录。参与 Observation:SFTP 面板要跟着它走
+    private var lastRemoteDirectory: String?
     /// 本次连接需要恢复到的目录(重连时置)
     @ObservationIgnored private var restoreDirOnConnect: String?
     /// 等待用户决策的主机密钥确认(首次连接指纹 / 密钥变更警告)
     var hostKeyPrompt: HostKeyPrompt?
+    /// 等待用户作答的 keyboard-interactive 质询(堡垒机 MFA 动态码等)
+    var keyboardInteractivePrompt: KeyboardInteractivePrompt?
+    @ObservationIgnored private var keyboardInteractiveContinuation: CheckedContinuation<[String]?, Never>?
     /// 自动重连:当前第几次尝试、是否已排定下一次
     private(set) var reconnectAttempt = 0
     private(set) var isAutoReconnectScheduled = false
@@ -216,9 +223,11 @@ final class TerminalSession: Identifiable {
             } catch {
                 if userInitiatedDisconnect {
                     disconnectReason = .userInitiated
-                } else if everConnected, Self.isCleanShellExit(error) {
-                    // 连接阶段的失败(认证被拒等)不可能是 shell 退出,必须走 .error 保留详情
-                    // 抛出的其实是通道 EOF/关闭(exit 与连接关闭竞速),视为 shell 退出
+                } else if everConnected, !Self.isConnectionStageError(error), Self.isCleanShellExit(error) {
+                    // 抛出的其实是通道 EOF/关闭(exit 与连接关闭竞速),视为 shell 退出。
+                    // 连接阶段的失败(认证被拒/私钥解析/交互认证取消)不可能是 shell 退出 ——
+                    // 它们的报错不含网络关键词,若不先排除会被误判成干净退出,
+                    // 自动重连一失败 pane 就无声关掉,诊断信息全丢
                     shellExited = true
                     disconnectReason = .remoteClosed
                 } else if spec.isLocal {
@@ -229,6 +238,9 @@ final class TerminalSession: Identifiable {
                 }
             }
             state = .disconnected(disconnectReason)
+            // 会话结束时质询弹窗必须收掉:服务器可能在用户找手机输 MFA 码时超时断开
+            //(LoginGraceTime),不收的话 sheet 悬在死管道上,提交毫无反应
+            resolveKeyboardInteractivePrompt(answers: nil)
             stopPortForwards()
             stopLogging()
             stdinWriter?.finish()
@@ -261,6 +273,15 @@ final class TerminalSession: Identifiable {
                 maybeScheduleReconnect(after: disconnectReason)
             }
         }
+    }
+
+    /// 连接/认证阶段自家抛的错误类型 —— 这些永远不该被归类成「shell 正常退出」
+    private static func isConnectionStageError(_ error: Error) -> Bool {
+        error is SessionError
+            || error is PrivateKeyFormat.ConversionError
+            || error is KeyboardInteractiveAuthError
+            || error is HostKeyError
+            || error is AgentAuthError
     }
 
     /// 判断断开是否为 shell 正常退出(通道 EOF/关闭)而非网络异常(reset/timeout/refused…)
@@ -331,6 +352,27 @@ final class TerminalSession: Identifiable {
                 self.hostKeyContinuation = continuation
                 self.hostKeyPrompt = prompt
                 self.state = .connecting(detail: String(localized: "等待主机密钥确认…"))
+            }
+        }
+    }
+
+    // MARK: - keyboard-interactive 质询(堡垒机 MFA)
+
+    /// UI 回填应答(与提示同数量、同顺序);nil = 用户取消,认证中止
+    func resolveKeyboardInteractivePrompt(answers: [String]?) {
+        keyboardInteractivePrompt = nil
+        keyboardInteractiveContinuation?.resume(returning: answers)
+        keyboardInteractiveContinuation = nil
+    }
+
+    /// 认证 delegate 的 UI 回调:挂出 sheet 并等用户作答(NIO 线程经 Task 跳到主线程)
+    private func requestKeyboardInteractiveAnswers(_ challenge: KeyboardInteractiveAuthDelegate.Challenge) async -> [String]? {
+        await withCheckedContinuation { continuation in
+            Task { @MainActor in
+                self.keyboardInteractiveContinuation?.resume(returning: nil)
+                self.keyboardInteractiveContinuation = continuation
+                self.keyboardInteractivePrompt = KeyboardInteractivePrompt(challenge: challenge)
+                self.state = .connecting(detail: String(localized: "等待交互式认证(MFA)…"))
             }
         }
     }
@@ -961,6 +1003,7 @@ final class TerminalSession: Identifiable {
             let (stream, continuation) = AsyncStream.makeStream(of: StdinEvent.self)
             await MainActor.run {
                 self.stdinWriter = continuation
+                self.syncTerminalSize()
                 self.state = .connected
                 self.connectedAt = Date()
                 self.everConnected = true
@@ -1096,6 +1139,7 @@ final class TerminalSession: Identifiable {
 
         let (stream, continuation) = AsyncStream.makeStream(of: StdinEvent.self)
         stdinWriter = continuation
+        syncTerminalSize()
         state = .connected
         connectedAt = Date()
         everConnected = true
@@ -1204,10 +1248,18 @@ final class TerminalSession: Identifiable {
             let password = try transientPW
                 ?? KeychainStore.read(account: KeychainStore.passwordAccount(for: hop.hostID))
                 ?? ""
-            return .passwordBased(username: hop.username, password: password)
+            // password 失败自动转 keyboard-interactive(堡垒机 MFA,issue #12):
+            // 第一轮 Password: 提示自动用存储密码作答,MFA 动态码弹 sheet 问用户
+            let delegate = KeyboardInteractiveAuthDelegate(
+                username: hop.username,
+                password: password
+            ) { [weak self] challenge in
+                await self?.requestKeyboardInteractiveAnswers(challenge)
+            }
+            return .custom(delegate)
 
         case .privateKeyFile:
-            guard let path = hop.privateKeyPath, !path.isEmpty else { throw SessionError.unsupportedKey }
+            guard let path = hop.privateKeyPath, !path.isEmpty else { throw SessionError.missingKeyFile }
             let expanded = NSString(string: path).expandingTildeInPath
             let keyText = try String(contentsOfFile: expanded, encoding: .utf8)
             let passphrase = try transientPP
@@ -1256,18 +1308,11 @@ final class TerminalSession: Identifiable {
 
     private static func keyAuthentication(username: String, keyText: String, passphrase: String?) throws -> SSHAuthenticationMethod {
         // 磁盘上的私钥文件常是老式 PKCS#1/PKCS#8 PEM(~/.ssh/id_rsa、云厂商 .pem),
-        // 先归一化成 OpenSSH 容器再交给 Citadel。文件本身不动。
-        let normalized = try PrivateKeyFormat.normalized(keyText, passphrase: passphrase)
-        let decryptionKey = normalized.passphraseConsumed
-            ? nil
-            : passphrase.flatMap { $0.isEmpty ? nil : Data($0.utf8) }
-        if let key = try? Curve25519.Signing.PrivateKey(sshEd25519: normalized.text, decryptionKey: decryptionKey) {
-            return .ed25519(username: username, privateKey: key)
+        // 归一化/解密/诊断统一走 parseForAuth(与 iOS、密钥导入同口径)。文件本身不动。
+        switch try PrivateKeyFormat.parseForAuth(keyText, passphrase: passphrase).key {
+        case .ed25519(let key): return .ed25519(username: username, privateKey: key)
+        case .rsa(let key): return .rsa(username: username, privateKey: key)
         }
-        if let key = try? Insecure.RSA.PrivateKey(sshRsa: normalized.text, decryptionKey: decryptionKey) {
-            return .rsa(username: username, privateKey: key)
-        }
-        throw SessionError.unsupportedKey
     }
 
     /// 规格 5.4:读取私钥用于连接前可要求 Touch ID(设置项,默认开)
@@ -1309,16 +1354,36 @@ extension TerminalSession: TerminalViewDelegate {
         }
     }
 
+    /// 建好 stdin 流后按视图当前尺寸补一次 resize。
+    /// 连接/spawn 与 SwiftUI 布局各走各的时序,布局落在 stdinWriter 就位之前时
+    /// sizeChanged 会被丢掉(那时 writer 还是 nil),远端/本地 PTY 就停在开channel
+    /// 时的旧尺寸上,表现为折行列数与画面对不上。
+    private func syncTerminalSize() {
+        let term = terminalView.getTerminal()
+        guard term.cols > 0, term.rows > 0 else { return }
+        _ = stdinWriter?.yield(.resize(cols: term.cols, rows: term.rows))
+    }
+
     nonisolated func setTerminalTitle(source: TerminalView, title: String) {}
 
     nonisolated func hostCurrentDirectoryUpdate(source: TerminalView, directory: String?) {
         MainActor.assumeIsolated {
-            // 形如 file://host/path 或直接路径;取路径部分
+            // 形如 file://host/path 或直接路径;取路径部分。
+            // URL.path 已做过百分号解码,再解一次会把目录名里字面的 %XX 吃掉
+            //(/data/100%41 变 /data/100A)。
             guard let dir = directory else { return }
+            let path: String?
             if let url = URL(string: dir), url.scheme == "file" {
-                lastRemoteDirectory = url.path.removingPercentEncoding ?? url.path
+                path = url.path
             } else if dir.hasPrefix("/") {
-                lastRemoteDirectory = dir
+                path = dir
+            } else {
+                path = nil
+            }
+            // 多数 shell 每个提示符都发一遍 OSC 7,同值写入会白白触发 Observation
+            //(SFTP 面板整个 body 重算一轮)
+            if let path, path != lastRemoteDirectory {
+                lastRemoteDirectory = path
             }
         }
     }

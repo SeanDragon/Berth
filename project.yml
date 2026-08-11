@@ -89,6 +89,7 @@ targets:
       - path: Berth/Core/Parsing
       - path: Berth/Core/SSH/HostSpec.swift
       - path: Berth/Core/SSH/SSHErrorMapper.swift
+      - path: Berth/Core/SSH/KeyboardInteractiveAuth.swift
       - path: Berth/Core/SSH/KnownHostsStore.swift
       - path: Berth/Core/SSH/HostKeyValidation.swift
       - path: Berth/Core/SSH/OpenSSHFormat.swift

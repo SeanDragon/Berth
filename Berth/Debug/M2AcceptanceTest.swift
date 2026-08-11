@@ -329,6 +329,23 @@ enum M2AcceptanceTest {
         guard browser.state == .ready else { log("SFTP_FAIL list: \(browser.state)"); return }
         let homeListed = browser.entries.count
 
+        // 初始目录跟随该 pane 的当前目录(issue #11-5):shell 报 OSC 7 后新开的
+        // 面板应落在那个目录,而不是一律 home
+        session.sendText("cd /etc && printf '\\033]7;file://localhost/etc\\033\\\\'\n")
+        try? await Task.sleep(for: .seconds(1.5))
+        let tracked = session.currentRemoteDirectory
+        let followed = SFTPBrowser(initialPath: tracked) { try await session.openSFTP() }
+        await followed.start()
+        let followsCwd = followed.path == "/etc"
+        followed.close()
+        guard followsCwd else {
+            log("SFTP_FAIL 初始目录未跟随 pane osc7=\(tracked ?? "nil") path=\(followed.path)")
+            browser.close()
+            return
+        }
+        session.sendText("cd ~\n")
+        try? await Task.sleep(for: .milliseconds(500))
+
         // 上传一个临时文件
         let payload = "berth-sftp-\(homeListed)".data(using: .utf8)!
         let localUp = URL(fileURLWithPath: NSTemporaryDirectory() + "berth_sftp_up.txt")
@@ -346,7 +363,7 @@ enum M2AcceptanceTest {
             await browser.delete(entry)
             await browser.refresh()
             let deleted = !browser.entries.contains { $0.name == "berth_sftp_up.txt" }
-            log("SFTP_OK home=\(homeListed) uploaded=\(uploaded) roundtrip=\(roundtrip) deleted=\(deleted)")
+            log("SFTP_OK home=\(homeListed) uploaded=\(uploaded) roundtrip=\(roundtrip) deleted=\(deleted) followsCwd=\(followsCwd)")
         } else {
             log("SFTP_FAIL 上传后未找到文件 home=\(homeListed) uploaded=\(uploaded)")
         }
@@ -650,6 +667,79 @@ enum M2AcceptanceTest {
             height: 900,
             to: dumpBase + ".messages.png"
         )
+    }
+
+    /// keyboard-interactive 验收(issue #12):BERTH_KBDINT_AUTOTEST=1。
+    /// 目标 sshd 须已禁用 password、只开 keyboard-interactive(docker/test-sshd/up-kbdint.sh)。
+    /// A:存储密码 → password 被拒后转 kbd-int,首个不回显提示自动用密码作答 → 连上跑通命令。
+    /// B:无密码 → 质询冒泡为 keyboardInteractivePrompt(UI sheet 数据源)→ 程序化作答 → 连上。
+    static func runKbdIntIfRequested(container: ModelContainer) async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BERTH_KBDINT_AUTOTEST"] == "1",
+              let host = env["BERTH_TEST_HOST"],
+              let user = env["BERTH_TEST_USER"],
+              let password = env["BERTH_TEST_PASSWORD"],
+              let dumpBase = env["BERTH_TEST_DUMP"] else { return }
+        var lines: [String] = []
+        func log(_ line: String) {
+            lines.append(line)
+            try? lines.joined(separator: "\n").write(toFile: dumpBase + ".kbdint.log", atomically: true, encoding: .utf8)
+        }
+        let port = Int(env["BERTH_TEST_PORT"] ?? "22") ?? 22
+        let manager = SessionManager.shared
+
+        func waitConnected(_ session: TerminalSession, _ tag: String, answers: [String]? = nil) async -> Bool {
+            let deadline = Date().addingTimeInterval(25)
+            var promptAnswered = false
+            while Date() < deadline {
+                if session.hostKeyPrompt != nil { session.resolveHostKeyPrompt(accepted: true) }
+                if let prompt = session.keyboardInteractivePrompt {
+                    if let answers, !promptAnswered {
+                        promptAnswered = true
+                        log("\(tag) PROMPT title=\(prompt.challenge.title) prompts=\(prompt.challenge.prompts.map(\.text))")
+                        session.resolveKeyboardInteractivePrompt(answers: answers)
+                    } else if answers == nil {
+                        log("\(tag) UNEXPECTED_PROMPT \(prompt.challenge.prompts.map(\.text))")
+                        session.resolveKeyboardInteractivePrompt(answers: nil)
+                    }
+                }
+                if case .connected = session.state { return true }
+                if case .disconnected(let reason) = session.state {
+                    log("\(tag) DISCONNECTED \(reason.message ?? "-")")
+                    return false
+                }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            log("\(tag) TIMEOUT state=\(session.state)")
+            return false
+        }
+
+        // A:存储密码自动应答(不该弹任何质询 UI)
+        let specA = HostSpec(
+            hostID: UUID(), label: "kbdint-auto", hostname: host, port: port,
+            username: user, authMethod: .password, privateKeyPath: nil
+        )
+        let auto = manager.open(spec: specA, transientPassword: password)
+        guard await waitConnected(auto, "AUTO") else { log("KBDINT_FAIL 自动应答未连上"); return }
+        try? await Task.sleep(for: .seconds(1))
+        auto.sendText("echo BERTH_KBDINT_$((40+2))\n")
+        try? await Task.sleep(for: .seconds(1))
+        let terminal = auto.terminalView.getTerminal()
+        let text = String(decoding: terminal.getBufferAsData(kind: .normal), as: UTF8.self)
+        let echoOK = text.contains("BERTH_KBDINT_42")
+        log("AUTO_CONNECTED echo=\(echoOK)")
+        manager.closePane(auto)
+        guard echoOK else { log("KBDINT_FAIL 自动应答 shell 不可用"); return }
+
+        // B:无存储密码 → 质询必须冒泡成 keyboardInteractivePrompt,由「UI」作答
+        let specB = HostSpec(
+            hostID: UUID(), label: "kbdint-prompt", hostname: host, port: port,
+            username: user, authMethod: .password, privateKeyPath: nil
+        )
+        let prompted = manager.open(spec: specB)
+        let promptOK = await waitConnected(prompted, "PROMPT", answers: [password])
+        manager.closePane(prompted)
+        log(promptOK ? "KBDINT_OK auto+prompt 双路径通过" : "KBDINT_FAIL 质询路径未连上")
     }
 
     /// 连接复用验收:BERTH_REUSE_AUTOTEST=1。连目标(拥有者)后,再开一个借用会话复用同一连接,

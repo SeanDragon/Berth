@@ -55,4 +55,10 @@ extension SendsUserAuthMessages {
         self.userAuthStateMachine.sendUserAuthPKOK(message)
         try self.serializer.serialize(message: .userAuthPKOK(message), to: &buffer)
     }
+
+    // [Berth patch] RFC 4256 keyboard-interactive 应答
+    mutating func writeUserAuthInfoResponse(_ message: SSHMessage.UserAuthInfoResponseMessage, into buffer: inout ByteBuffer) throws {
+        self.userAuthStateMachine.sendUserAuthInfoResponse(message)
+        try self.serializer.serialize(message: .userAuthInfoResponse(message), to: &buffer)
+    }
 }

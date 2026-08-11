@@ -68,6 +68,46 @@ Citadel 三条连接路径(`SSHClientSession.connect(settings:)` 直连、`SSHCl
 
 均标记 `[Berth patch]`。
 
+## 补丁:keyboard-interactive 认证(RFC 4256,堡垒机 MFA)
+
+**动机**(issue #12):阿里云堡垒机等「密码 + MFA 动态码」登录走 keyboard-interactive,
+nio-ssh 完全没有实现该方法,这类服务器无法连接。
+
+### swift-nio-ssh
+- `SSHMessages.swift`:新增 `UserAuthInfoRequestMessage`(60)/`UserAuthInfoResponseMessage`(61)
+  及其编解码。**报文号 60 与 PK_OK 复用**(RFC 4252/4256 历史遗留),解码按内容判别:先按
+  PK_OK 解(首字段必为已知密钥算法名),失败回退按 INFO_REQUEST 解。客户端只要不发
+  「无签名 publickey 试探」(Citadel 从不发)就无歧义。`UserAuthRequestMessage.Method`
+  增加 `.keyboardInteractive(submethods:)` 及读写。
+- `UserAuthenticationMethod.swift`:`NIOSSHAvailableUserAuthenticationMethods.keyboardInteractive`
+  (解析/广播 "keyboard-interactive");offer 增加 `.keyboardInteractive`;公开
+  `NIOSSHKeyboardInteractiveChallenge`(name/instruction/prompts)。
+- `ClientUserAuthenticationDelegate.swift`:协议新增 `keyboardInteractiveChallenge(_:responsePromise:)`,
+  带默认实现(直接失败),现有 delegate 不受影响。
+- `UserAuthenticationStateMachine.swift`:客户端 `awaitingResponses` 状态下收 INFO_REQUEST →
+  调 delegate 应答(异步,等 UI 输 MFA 码),状态不变;`sendUserAuthInfoResponse` 记账;
+  服务端收到 kbd-int 请求一律按失败应答(Berth 只做客户端)。
+- `SSHConnectionStateMachine.swift` + `Operations/AcceptsUserAuthMessages.swift` +
+  `Operations/SendsUserAuthMessages.swift`:userAuthentication 状态下 INFO_REQUEST 入站
+  分发与 INFO_RESPONSE 出站序列化。
+
+### Citadel
+- `SSHAuthenticationMethod.swift`:
+  - 记录在途 implementation,`keyboardInteractiveChallenge` 转发给当前 `.custom` 实现
+    (否则新协议方法落在默认实现上直接失败)。
+  - **多轮认证修复**:`.custom` 在途时后续 `nextAuthenticationType` 回调持续转发给它,
+    由它自管耗尽。原逻辑每轮弹出一个 implementation,单个 custom delegate 第二轮就被
+    误判「全部用尽」——password 失败转 kbd-int 永远走不通。
+  - offer 校验 switch 补 `.keyboardInteractive` 分支。
+
+### Berth 侧配套(非 vendor)
+- `Core/SSH/KeyboardInteractiveAuth.swift`:认证 delegate(password 先行,失败转 kbd-int;
+  首个不回显提示自动用存储密码作答,MFA 码冒泡 UI)+ 质询呈现模型。
+- `TerminalSession`:`keyboardInteractivePrompt` + sheet(`KeyboardInteractivePromptSheet`),
+  `.password` 认证统一走该 delegate。
+- 验收:`docker/test-sshd/up-kbdint.sh`(2223,仅 kbd-int)+ `BERTH_KBDINT_AUTOTEST=1`
+  (存储密码自动应答、无密码 UI 质询两条路径)。
+
 ## 升级 Citadel/nio-ssh 时
 本地 vendor 已脱离 SPM 版本管理。若要升级,需重新 vendor 对应版本并重放上述 `[Berth patch]`
 改动(`grep -rn "\[Berth patch\]" vendor/` 可列出全部补丁点)。

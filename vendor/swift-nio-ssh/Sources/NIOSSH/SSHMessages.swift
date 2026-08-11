@@ -38,6 +38,9 @@ enum SSHMessage: Equatable {
     case userAuthSuccess
     case userAuthBanner(UserAuthBannerMessage)
     case userAuthPKOK(UserAuthPKOKMessage)
+    // [Berth patch] RFC 4256 keyboard-interactive
+    case userAuthInfoRequest(UserAuthInfoRequestMessage)
+    case userAuthInfoResponse(UserAuthInfoResponseMessage)
     case globalRequest(GlobalRequestMessage)
     case requestSuccess(RequestSuccessMessage)
     case requestFailure
@@ -146,6 +149,8 @@ extension SSHMessage {
             case none
             case publicKey(PublicKeyAuthType)
             case password(String)
+            // [Berth patch] RFC 4256 keyboard-interactive(submethods 通常留空)
+            case keyboardInteractive(submethods: String)
         }
 
         enum PublicKeyAuthType: Equatable {
@@ -186,6 +191,31 @@ extension SSHMessage {
         static let id: UInt8 = 60
 
         var key: NIOSSHPublicKey
+    }
+
+    // [Berth patch] RFC 4256 keyboard-interactive:INFO_REQUEST 与 PK_OK 复用报文号 60,
+    // 解码时按内容判别(PK_OK 首字段必为已知密钥算法名,INFO_REQUEST 的 name 字段不会撞上)。
+    struct UserAuthInfoRequestMessage: Equatable {
+        // SSH_MSG_USERAUTH_INFO_REQUEST
+        static let id: UInt8 = 60
+
+        struct Prompt: Equatable {
+            var prompt: String
+            var echo: Bool
+        }
+
+        var name: String
+        var instruction: String
+        var languageTag: String
+        var prompts: [Prompt]
+    }
+
+    // [Berth patch] RFC 4256 keyboard-interactive 应答
+    struct UserAuthInfoResponseMessage: Equatable {
+        // SSH_MSG_USERAUTH_INFO_RESPONSE
+        static let id: UInt8 = 61
+
+        var responses: [String]
     }
 
     struct GlobalRequestMessage: Equatable {
@@ -437,10 +467,21 @@ extension ByteBuffer {
                 }
                 return .userAuthBanner(message)
             case SSHMessage.UserAuthPKOKMessage.id:
-                guard let message = try self.readUserAuthPKOKMessage() else {
+                // [Berth patch] 报文号 60 双关:PK_OK(RFC 4252)与 INFO_REQUEST(RFC 4256)。
+                // 按内容判别:PK_OK 首字段必为已知密钥算法名;不是则按 INFO_REQUEST 解。
+                // (客户端只要不发「无签名 publickey 试探」就不会收到 PK_OK,判别是安全的。)
+                if let message = try? self.readUserAuthPKOKMessage() {
+                    return .userAuthPKOK(message)
+                }
+                guard let message = self.readUserAuthInfoRequestMessage() else {
                     return nil
                 }
-                return .userAuthPKOK(message)
+                return .userAuthInfoRequest(message)
+            case SSHMessage.UserAuthInfoResponseMessage.id:
+                guard let message = self.readUserAuthInfoResponseMessage() else {
+                    return nil
+                }
+                return .userAuthInfoResponse(message)
             case SSHMessage.GlobalRequestMessage.id:
                 guard let message = try self.readGlobalRequestMessage() else {
                     return nil
@@ -676,6 +717,16 @@ extension ByteBuffer {
                 }
 
                 method = .password(password)
+            // [Berth patch] RFC 4256 keyboard-interactive:string language(已废弃)+ string submethods
+            case "keyboard-interactive":
+                guard
+                    self.readSSHStringAsString() != nil,
+                    let submethods = self.readSSHStringAsString()
+                else {
+                    return nil
+                }
+
+                method = .keyboardInteractive(submethods: submethods)
             case "publickey":
                 guard
                     let expectSignature = self.readSSHBoolean(),
@@ -770,6 +821,50 @@ extension ByteBuffer {
             }
 
             return .init(key: publicKey)
+        }
+    }
+
+    // [Berth patch] RFC 4256 keyboard-interactive INFO_REQUEST(报文号 60,内容判别后走到这里)
+    mutating func readUserAuthInfoRequestMessage() -> SSHMessage.UserAuthInfoRequestMessage? {
+        self.rewindReaderOnNil { `self` in
+            guard
+                let name = self.readSSHStringAsString(),
+                let instruction = self.readSSHStringAsString(),
+                let languageTag = self.readSSHStringAsString(),
+                let promptCount = self.readInteger(as: UInt32.self),
+                promptCount <= 64  // RFC 未设上限,防御性拒绝畸形报文
+            else {
+                return nil
+            }
+            var prompts: [SSHMessage.UserAuthInfoRequestMessage.Prompt] = []
+            prompts.reserveCapacity(Int(promptCount))
+            for _ in 0..<promptCount {
+                guard let prompt = self.readSSHStringAsString(), let echo = self.readSSHBoolean() else {
+                    return nil
+                }
+                prompts.append(.init(prompt: prompt, echo: echo))
+            }
+            return SSHMessage.UserAuthInfoRequestMessage(
+                name: name, instruction: instruction, languageTag: languageTag, prompts: prompts
+            )
+        }
+    }
+
+    // [Berth patch] RFC 4256 keyboard-interactive INFO_RESPONSE(报文号 61)
+    mutating func readUserAuthInfoResponseMessage() -> SSHMessage.UserAuthInfoResponseMessage? {
+        self.rewindReaderOnNil { `self` in
+            guard let responseCount = self.readInteger(as: UInt32.self), responseCount <= 64 else {
+                return nil
+            }
+            var responses: [String] = []
+            responses.reserveCapacity(Int(responseCount))
+            for _ in 0..<responseCount {
+                guard let response = self.readSSHStringAsString() else {
+                    return nil
+                }
+                responses.append(response)
+            }
+            return SSHMessage.UserAuthInfoResponseMessage(responses: responses)
         }
     }
 
@@ -1170,6 +1265,13 @@ extension ByteBuffer {
         case .userAuthPKOK(let message):
             writtenBytes += self.writeInteger(SSHMessage.UserAuthPKOKMessage.id)
             writtenBytes += self.writeUserAuthPKOKMessage(message)
+        // [Berth patch] RFC 4256 keyboard-interactive
+        case .userAuthInfoRequest(let message):
+            writtenBytes += self.writeInteger(SSHMessage.UserAuthInfoRequestMessage.id)
+            writtenBytes += self.writeUserAuthInfoRequestMessage(message)
+        case .userAuthInfoResponse(let message):
+            writtenBytes += self.writeInteger(SSHMessage.UserAuthInfoResponseMessage.id)
+            writtenBytes += self.writeUserAuthInfoResponseMessage(message)
         case .globalRequest(let message):
             writtenBytes += self.writeInteger(SSHMessage.GlobalRequestMessage.id)
             writtenBytes += self.writeGlobalRequestMessage(message)
@@ -1301,6 +1403,11 @@ extension ByteBuffer {
             writtenBytes += self.writeSSHString("password".utf8)
             writtenBytes += self.writeSSHBoolean(false)
             writtenBytes += self.writeSSHString(password.utf8)
+        // [Berth patch] RFC 4256 keyboard-interactive:string language(已废弃,置空)+ string submethods
+        case .keyboardInteractive(let submethods):
+            writtenBytes += self.writeSSHString("keyboard-interactive".utf8)
+            writtenBytes += self.writeSSHString("".utf8)
+            writtenBytes += self.writeSSHString(submethods.utf8)
         case .publicKey(.known(key: let key, signature: let signature)):
             writtenBytes += self.writeSSHString("publickey".utf8)
             writtenBytes += self.writeSSHBoolean(signature != nil)
@@ -1343,6 +1450,30 @@ extension ByteBuffer {
         writtenBytes += self.writeSSHString(message.key.keyPrefix)
         writtenBytes += self.writeCompositeSSHString { buffer in
             buffer.writeSSHHostKey(message.key)
+        }
+        return writtenBytes
+    }
+
+    // [Berth patch] RFC 4256 keyboard-interactive
+    mutating func writeUserAuthInfoRequestMessage(_ message: SSHMessage.UserAuthInfoRequestMessage) -> Int {
+        var writtenBytes = 0
+        writtenBytes += self.writeSSHString(message.name.utf8)
+        writtenBytes += self.writeSSHString(message.instruction.utf8)
+        writtenBytes += self.writeSSHString(message.languageTag.utf8)
+        writtenBytes += self.writeInteger(UInt32(message.prompts.count))
+        for prompt in message.prompts {
+            writtenBytes += self.writeSSHString(prompt.prompt.utf8)
+            writtenBytes += self.writeSSHBoolean(prompt.echo)
+        }
+        return writtenBytes
+    }
+
+    // [Berth patch] RFC 4256 keyboard-interactive
+    mutating func writeUserAuthInfoResponseMessage(_ message: SSHMessage.UserAuthInfoResponseMessage) -> Int {
+        var writtenBytes = 0
+        writtenBytes += self.writeInteger(UInt32(message.responses.count))
+        for response in message.responses {
+            writtenBytes += self.writeSSHString(response.utf8)
         }
         return writtenBytes
     }

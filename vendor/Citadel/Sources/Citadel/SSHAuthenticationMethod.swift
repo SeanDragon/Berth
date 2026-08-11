@@ -11,6 +11,9 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
     
     private let allImplementations: [Implementation]
     private var implementations: [Implementation]
+    // [Berth patch] keyboard-interactive:质询回调发生在 offer 之后,记录当前在途的
+    // 实现,把 INFO_REQUEST 转发给它(默认实现会直接失败,导致 kbd-int 永远走不通)
+    private var activeImplementation: Implementation?
     
     internal init(
         username: String,
@@ -83,12 +86,22 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
         availableMethods: NIOSSHAvailableUserAuthenticationMethods,
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
+        // [Berth patch] 自定义 delegate 自管多轮重试(如 password 失败转 keyboard-interactive):
+        // 后续回调持续转发给它,由它自己决定何时耗尽(fail promise / succeed(nil))。
+        // 原逻辑每次回调弹出一个 implementation,单个 .custom 在第二轮就被误判为
+        // 「全部用尽」,多轮认证永远走不通。
+        if case .custom(let implementation) = activeImplementation {
+            implementation.nextAuthenticationType(availableMethods: availableMethods, nextChallengePromise: nextChallengePromise)
+            return
+        }
+
         if implementations.isEmpty {
             nextChallengePromise.fail(SSHClientError.allAuthenticationOptionsFailed)
             return
         }
-        
+
         let implementation = implementations.removeFirst()
+        activeImplementation = implementation  // [Berth patch]
 
         switch implementation {
         case .user(let username, offer: let offer):
@@ -108,6 +121,12 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
                     nextChallengePromise.fail(SSHClientError.unsupportedPrivateKeyAuthentication)
                     return
                 }
+            // [Berth patch] RFC 4256
+            case .keyboardInteractive:
+                guard availableMethods.contains(.keyboardInteractive) else {
+                    nextChallengePromise.fail(SSHClientError.allAuthenticationOptionsFailed)
+                    return
+                }
             case .none:
                 ()
             }
@@ -116,5 +135,17 @@ public final class SSHAuthenticationMethod: NIOSSHClientUserAuthenticationDelega
         case .custom(let implementation):
             implementation.nextAuthenticationType(availableMethods: availableMethods, nextChallengePromise: nextChallengePromise)
         }
+    }
+
+    // [Berth patch] keyboard-interactive 质询转发给当前在途的自定义实现
+    public func keyboardInteractiveChallenge(
+        _ challenge: NIOSSHKeyboardInteractiveChallenge,
+        responsePromise: EventLoopPromise<[String]>
+    ) {
+        guard case .custom(let implementation) = activeImplementation else {
+            responsePromise.fail(SSHClientError.allAuthenticationOptionsFailed)
+            return
+        }
+        implementation.keyboardInteractiveChallenge(challenge, responsePromise: responsePromise)
     }
 }

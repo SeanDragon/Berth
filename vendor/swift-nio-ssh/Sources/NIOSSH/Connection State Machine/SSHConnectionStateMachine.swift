@@ -338,6 +338,12 @@ struct SSHConnectionStateMachine {
                 self.state = .userAuthentication(state)
                 return result
 
+            // [Berth patch] RFC 4256 keyboard-interactive 质询
+            case .userAuthInfoRequest(let message):
+                let result = try state.receiveUserAuthInfoRequest(message)
+                self.state = .userAuthentication(state)
+                return result
+
             case .disconnect:
                 self.state = .receivedDisconnect(state.role)
                 return .disconnect
@@ -853,6 +859,11 @@ struct SSHConnectionStateMachine {
 
             case .userAuthPKOK(let message):
                 try state.writeUserAuthPKOK(message, into: &buffer)
+                self.state = .userAuthentication(state)
+
+            // [Berth patch] RFC 4256 keyboard-interactive 应答
+            case .userAuthInfoResponse(let message):
+                try state.writeUserAuthInfoResponse(message, into: &buffer)
                 self.state = .userAuthentication(state)
 
             case .disconnect:

@@ -41,6 +41,7 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runAgentIfRequested(container: container)
                     await M2AcceptanceTest.runSFTPIfRequested(container: container)
                     await M2AcceptanceTest.runReuseIfRequested(container: container)
+                    await M2AcceptanceTest.runKbdIntIfRequested(container: container)
                     await M2AcceptanceTest.runKeychainProbeIfRequested()
                     await M2AcceptanceTest.runSFTPEditIfRequested()
                     await M2AcceptanceTest.runDropUploadIfRequested()

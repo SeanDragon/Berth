@@ -24,8 +24,10 @@ public struct NIOSSHAvailableUserAuthenticationMethods: OptionSet {
     public static let publicKey: NIOSSHAvailableUserAuthenticationMethods = .init(rawValue: 1 << 0)
     public static let password: NIOSSHAvailableUserAuthenticationMethods = .init(rawValue: 1 << 1)
     public static let hostBased: NIOSSHAvailableUserAuthenticationMethods = .init(rawValue: 1 << 2)
+    // [Berth patch] RFC 4256 keyboard-interactive
+    public static let keyboardInteractive: NIOSSHAvailableUserAuthenticationMethods = .init(rawValue: 1 << 3)
 
-    public static let all: NIOSSHAvailableUserAuthenticationMethods = [.publicKey, .password, .hostBased]
+    public static let all: NIOSSHAvailableUserAuthenticationMethods = [.publicKey, .password, .hostBased, .keyboardInteractive]
 }
 
 extension NIOSSHAvailableUserAuthenticationMethods {
@@ -40,6 +42,9 @@ extension NIOSSHAvailableUserAuthenticationMethods {
                 self.insert(.password)
             case "hostbased":
                 self.insert(.hostBased)
+            // [Berth patch] RFC 4256
+            case "keyboard-interactive":
+                self.insert(.keyboardInteractive)
             default:
                 // This is an unknown method, which we ignore.
                 break
@@ -54,7 +59,7 @@ extension NIOSSHAvailableUserAuthenticationMethods {
 
         // We need an array.
         var methods = [Substring]()
-        methods.reserveCapacity(3)
+        methods.reserveCapacity(4)
 
         if self.contains(.password) {
             methods.append("password")
@@ -64,6 +69,10 @@ extension NIOSSHAvailableUserAuthenticationMethods {
         }
         if self.contains(.hostBased) {
             methods.append("hostbased")
+        }
+        // [Berth patch] RFC 4256
+        if self.contains(.keyboardInteractive) {
+            methods.append("keyboard-interactive")
         }
 
         return methods
@@ -146,6 +155,9 @@ public extension NIOSSHUserAuthenticationOffer {
         case privateKey(PrivateKey)
         case password(Password)
         case hostBased(HostBased)
+        // [Berth patch] RFC 4256 keyboard-interactive:提交后服务器会发 INFO_REQUEST,
+        // 由 NIOSSHClientUserAuthenticationDelegate.keyboardInteractiveChallenge 应答
+        case keyboardInteractive(KeyboardInteractive)
         case none
     }
 }
@@ -179,6 +191,42 @@ public extension NIOSSHUserAuthenticationOffer.Offer {
             fatalError("PublicKeyRequest is currently unimplemented")
         }
     }
+
+    // [Berth patch] RFC 4256 keyboard-interactive 提案(纯数据;交互经 delegate 回调)
+    struct KeyboardInteractive {
+        public var submethods: String
+
+        public init(submethods: String = "") {
+            self.submethods = submethods
+        }
+    }
+}
+
+// [Berth patch] RFC 4256:服务器的一轮质询(INFO_REQUEST 的客户端呈现)
+public struct NIOSSHKeyboardInteractiveChallenge {
+    public struct Prompt {
+        /// 提示文本(如 "Password: "、"Verification code: ")
+        public var prompt: String
+        /// 是否回显用户输入(false = 密码式输入)
+        public var echo: Bool
+
+        public init(prompt: String, echo: Bool) {
+            self.prompt = prompt
+            self.echo = echo
+        }
+    }
+
+    public var name: String
+    public var instruction: String
+    public var languageTag: String
+    public var prompts: [Prompt]
+
+    public init(name: String, instruction: String, languageTag: String, prompts: [Prompt]) {
+        self.name = name
+        self.instruction = instruction
+        self.languageTag = languageTag
+        self.prompts = prompts
+    }
 }
 
 extension SSHMessage.UserAuthRequestMessage {
@@ -199,6 +247,9 @@ extension SSHMessage.UserAuthRequestMessage {
             self.method = .publicKey(.known(key: privateKeyRequest.publicKey, signature: signature))
         case .password(let passwordRequest):
             self.method = .password(passwordRequest.password)
+        // [Berth patch] RFC 4256
+        case .keyboardInteractive(let request):
+            self.method = .keyboardInteractive(submethods: request.submethods)
         case .hostBased:
             fatalError("Unsupported")
         case .none:
