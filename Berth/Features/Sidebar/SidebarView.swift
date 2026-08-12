@@ -203,6 +203,11 @@ struct SidebarView: View {
     private func hostMenu(_ host: Host) -> some View {
         // 单击是「切过去」,这里明确是「再开一条」——同一台主机可以开多个标签
         Button("新建连接(⌘ 点按)") { connect(host) }
+        // issue #11:新建连接可选开在当前 pane 的分屏里,而不只有新标签
+        if sessionManager.selected != nil {
+            Button("在分屏中连接(左右)") { splitConnect(host, axis: .horizontal) }
+            Button("在分屏中连接(上下)") { splitConnect(host, axis: .vertical) }
+        }
         Button("复制 IP") { copyToPasteboard(host.hostname) }
         Button("复制用户名") { copyToPasteboard(host.username) }
         Button("复制 ssh 命令") { copyToPasteboard(sshCommand(for: host)) }
@@ -360,6 +365,13 @@ struct SidebarView: View {
         selectedHostID = host.id
         host.lastConnectedAt = Date()
         sessionManager.open(spec: HostSpec.resolve(host, in: allHosts))
+    }
+
+    /// issue #11:在当前聚焦 pane 旁分屏连接该主机
+    private func splitConnect(_ host: Host, axis: SplitAxis) {
+        selectedHostID = host.id
+        host.lastConnectedAt = Date()
+        sessionManager.splitFocused(axis: axis, spec: HostSpec.resolve(host, in: allHosts))
     }
 
     /// 网络唤醒:向本机所在子网 + 全局广播发 magic packet

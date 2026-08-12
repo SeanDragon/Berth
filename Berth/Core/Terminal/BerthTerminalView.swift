@@ -86,6 +86,33 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
         localVItem.image = NSImage(systemSymbolName: "terminal", accessibilityDescription: nil)
         menu.addItem(localVItem)
 
+        // issue #11:分屏不只能连当前主机 —— 子菜单列出全部主机任选
+        MainActor.assumeIsolated {
+            let hosts = SessionManager.shared.allKnownHosts()
+                .sorted { ($0.lastConnectedAt ?? .distantPast) > ($1.lastConnectedAt ?? .distantPast) }
+            guard !hosts.isEmpty else { return }
+            for (title, symbol, axisTag) in [
+                (String(localized: "左右分屏连接主机"), "rectangle.split.2x1", 0),
+                (String(localized: "上下分屏连接主机"), "rectangle.split.1x2", 1),
+            ] {
+                let parent = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+                parent.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+                let submenu = NSMenu()
+                submenu.autoenablesItems = false
+                for host in hosts {
+                    let item = NSMenuItem(title: "\(host.label)(\(host.username)@\(host.hostname))",
+                                          action: #selector(berthSplitWithHost(_:)), keyEquivalent: "")
+                    item.target = self
+                    item.tag = axisTag
+                    item.representedObject = host.id
+                    item.isEnabled = true
+                    submenu.addItem(item)
+                }
+                parent.submenu = submenu
+                menu.addItem(parent)
+            }
+        }
+
         let closePaneItem = NSMenuItem(title: String(localized: "关闭此分屏"), action: #selector(berthClosePane), keyEquivalent: "")
         closePaneItem.target = self
         closePaneItem.image = NSImage(systemSymbolName: "xmark.rectangle", accessibilityDescription: nil)
@@ -127,6 +154,18 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
 
     @objc private func berthCopyLastOutput() {
         MainActor.assumeIsolated { _ = SessionManager.shared.selected?.copyLastCommandOutput() }
+    }
+
+    @objc private func berthSplitWithHost(_ sender: NSMenuItem) {
+        guard let hostID = sender.representedObject as? UUID else { return }
+        let axis: SplitAxis = sender.tag == 0 ? .horizontal : .vertical
+        MainActor.assumeIsolated {
+            let manager = SessionManager.shared
+            let all = manager.allKnownHosts()
+            guard let host = all.first(where: { $0.id == hostID }) else { return }
+            host.lastConnectedAt = Date()
+            manager.splitFocused(axis: axis, spec: HostSpec.resolve(host, in: all))
+        }
     }
 
     @objc private func berthSplitHorizontal() {

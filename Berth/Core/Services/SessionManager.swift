@@ -135,6 +135,25 @@ final class SessionManager {
         insertSplit(TerminalSession(spec: .localShell()), axis: axis)
     }
 
+    /// issue #11:在当前聚焦 pane 旁分屏连接任意主机(右键/侧栏选主机)。
+    /// 与聚焦会话同主机时仍复用其连接,行为与 splitFocused(axis:) 一致。
+    func splitFocused(axis: SplitAxis, spec: HostSpec) {
+        guard let current = selected else { return }
+        let secondary = TerminalSession(spec: spec)
+        if current.spec.hostID == spec.hostID {
+            secondary.transientPassword = current.transientPassword
+            secondary.transientPassphrase = current.transientPassphrase
+            if let connection = current.liveConnection { secondary.prepareToBorrow(connection) }
+        }
+        insertSplit(secondary, axis: axis)
+    }
+
+    /// 全部可连主机(托管 + ssh_config 镜像),供 AppKit 菜单等 SwiftUI @Query 之外的场景
+    func allKnownHosts() -> [Host] {
+        let managed = (try? modelContainer?.mainContext.fetch(FetchDescriptor<Host>())) ?? []
+        return managed + SSHConfigService.shared.mirrorHosts
+    }
+
     /// 把新会话作为聚焦 pane 的兄弟插入分屏树并拨号
     private func insertSplit(_ secondary: TerminalSession, axis: SplitAxis) {
         guard let tab = selectedTab, let current = selected else { return }

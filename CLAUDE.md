@@ -14,7 +14,9 @@
 Citadel 原生只用 SHA-1(`ssh-rsa`)签 RSA,OpenSSH 8.8+ 拒收 → RSA 密钥连不上现代服务器。
 **已 vendor Citadel + nio-ssh 并打补丁**,改用 `rsa-sha2-512` 签名(RFC 8332),对 OpenSSH 9.2
 真机验证通过。补丁点见 `vendor/PATCHES.md`(`grep -rn "\[Berth patch\]" vendor/` 可列全)。
-已知边界:RSA 作 host key 且用 SHA-2 签 KEX 的服务器暂未覆盖验签(普遍用 ed25519 host key,不阻塞)。
+老式服务器/堡垒机兼容(issue #12):RSA host key(rsa-sha2-512/256 + ssh-rsa)验签、
+DH group14 KEX、aes128-ctr 均已启用(`SSHAlgorithms.berthCompatibility`),现代算法仍优先;
+协商失败错误会带双方算法列表诊断。回归:`./docker/test-sshd/up-legacy.sh`(2224)。
 
 ## 构建
 
@@ -86,6 +88,13 @@ BERTH_M1_AUTOTEST=1 BERTH_TRANSIENT_STORE=1 \
   - [x] issue #11 批次:本地 Shell PTY 初始尺寸(fork 后 child 设 TIOCSWINSZ,折行修复)、
     分屏拖分割线调比例(双击复位)、SFTP 初始目录跟随 pane(OSC 7)、侧栏 ⌘点按/右键
     对同主机再开连接(复用 SSH 连接)
+  - [x] issue #11 二批:失败卡片 × 立即关闭;卡片进编辑后「保存」即用新配置重连(不再
+    杵着旧 spec);跨主机分屏(侧栏右键「在分屏中连接」+ 终端右键「分屏连接主机」子菜单,
+    `splitFocused(axis:spec:)` 同主机仍复用连接)
+  - [x] issue #12 二批(堡垒机 KEX 兼容):老式算法协商失败修复 —— DH group14
+    sha256/sha1 KEX、aes128-ctr、RSA host key(rsa-sha2-512/256+ssh-rsa 验签,vendor
+    补丁)via `SSHAlgorithms.berthCompatibility`(Mac+iOS);协商失败错误带双方算法列表。
+    验收:`docker/test-sshd/up-legacy.sh`(2224)四组合 + M1 autotest ALL_DONE
   - [ ] 本地回显(predictive echo)完整版 —— 触及 SwiftTerm 渲染,需交互测延迟,暂缓
 - [~] M6 — iOS 版(`BerthiOS` target,`xcodegen generate` 后用
   `xcodebuildmcp simulator build-and-run --project-path Berth.xcodeproj --scheme BerthiOS --simulator-name "iPhone 17 Pro Max"`):
