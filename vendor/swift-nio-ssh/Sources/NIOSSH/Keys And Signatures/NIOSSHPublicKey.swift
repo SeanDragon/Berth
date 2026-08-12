@@ -211,6 +211,18 @@ extension NIOSSHPublicKey {
         }
     }
 
+    /// [Berth patch] Whether this key can serve the given negotiated host-key algorithm.
+    /// Built-in keys serve exactly their blob type; a custom key (RSA) may serve several
+    /// names that only differ in signature hash (RFC 8332).
+    func canServe(hostKeyAlgorithm algorithm: Substring) -> Bool {
+        switch self.backingKey {
+        case .custom(let publicKey):
+            return publicKey.hostKeyAlgorithmNames.contains { algorithm.utf8.elementsEqual($0.utf8) }
+        default:
+            return self.keyPrefix.elementsEqual(algorithm.utf8)
+        }
+    }
+
     private static let bundledAlgorithms: [String.UTF8View] = [
         Self.ed25519PublicKeyPrefix, Self.ecdsaP384PublicKeyPrefix, Self.ecdsaP256PublicKeyPrefix, Self.ecdsaP521PublicKeyPrefix,
     ]

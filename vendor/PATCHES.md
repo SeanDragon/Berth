@@ -34,9 +34,8 @@ vendor 后各自删除了 `.git`,`Citadel/Package.swift` 的 nio-ssh 依赖改�
 
 ### 影响面与已知边界
 - ed25519 / ECDSA / 密码认证:不受影响(`userAuthPrefix` 默认等于原 `keyPrefix`)。
-- RSA **验签**(`PublicKey.isValidSignature`)仍是 SHA-1,只在 RSA 作 **host key** 时用;
-  连接普遍用 ed25519/ecdsa host key,故未受影响。若将来需连「host key 为 ssh-rsa 且用
-  SHA-2 签 KEX」的服务器,需再补验签路径(当前不阻塞)。
+- ~~RSA **验签**(`PublicKey.isValidSignature`)仍是 SHA-1~~ 已由下方「RSA host key +
+  KEX 兼容」补丁补齐:验签按签名到达时的算法名选哈希(SHA-512/256/1)。
 - 验证:对 OpenSSH 9.2 真机(192.168.1.111 / .222)用 RSA 密钥连通 OK;ed25519 / 密码 /
   known_hosts 全回归通过;35 项单测通过。
 
@@ -107,6 +106,51 @@ nio-ssh 完全没有实现该方法,这类服务器无法连接。
   `.password` 认证统一走该 delegate。
 - 验收:`docker/test-sshd/up-kbdint.sh`(2223,仅 kbd-int)+ `BERTH_KBDINT_AUTOTEST=1`
   (存储密码自动应答、无密码 UI 质询两条路径)。
+
+## 补丁:RSA host key + 老式算法 KEX 兼容(issue #12 续,堡垒机协商失败)
+
+**动机**:阿里云堡垒机升级 v1.6.0 后报 `keyExchangeNegotiationFailure`。抓包定位:此类
+堡垒机只提供 `diffie-hellman-group14-*` KEX 与 RSA host key(常配 `aes-ctr` 加密),而
+nio-ssh 内置只有 curve25519/ECDH KEX、AES-GCM、ed25519/ECDSA host key,三项全无交集。
+Citadel 自带 `DiffieHellmanGroup14Sha1/Sha256` 与 `AES128CTR` 实现(Berth 侧经
+`SSHAlgorithms` 追加启用,见 `Core/SSH/SSHCompatAlgorithms.swift`),但 RSA 作 host key
+的验签/协商链路缺失,需 vendor 补丁:
+
+### swift-nio-ssh
+- `Keys And Signatures/CustomKeys.swift`:
+  - `NIOSSHPublicKeyProtocol` 增加 `static var hostKeyAlgorithmNames: [String]`
+    (默认 `[publicKeyPrefix]`):一个密钥类型可对外服务多个 host key 算法名(RFC 8332)。
+  - `NIOSSHSignatureProtocol` 增加 `static var signatureAlgorithmNames: [String]`(默认
+    `[signaturePrefix]`)与 `read(from:algorithm:)`(默认转发 `read(from:)`):签名按
+    到达时的线上算法名解析,让实现记住签名用的哈希。
+- `Key Exchange/SSHKeyExchangeStateMachine.swift`:
+  - `supportedServerHostKeyAlgorithms`:自定义密钥从单个 `publicKeyPrefix` 改为
+    `hostKeyAlgorithmNames` 全量广播(RSA → rsa-sha2-512/256 + ssh-rsa)。
+  - host key 一致性检查:`keyPrefix == 协商名` 改为 `canServe(hostKeyAlgorithm:)`
+    (rsa-sha2-512 由 blob 类型仍为 ssh-rsa 的密钥服务)。
+  - 协商失败(KEX/host key、加密、MAC 三处)带 diagnostics:双方算法列表进错误文本,
+    用户报错即可定位(此前只有裸 `keyExchangeNegotiationFailure`)。
+- `Keys And Signatures/NIOSSHPublicKey.swift`:`canServe(hostKeyAlgorithm:)`(自定义密钥
+  查 `hostKeyAlgorithmNames`,内置密钥仍按前缀相等)。
+- `Keys And Signatures/NIOSSHSignature.swift`:`readSSHSignature` 自定义分支按
+  `signatureAlgorithmNames` 多名匹配并传入算法名。
+- `NIOSSHError.swift`:`keyExchangeNegotiationFailure(diagnostics:)` 工厂。
+
+### Citadel
+- `Algorithms/RSA.swift`:
+  - `PublicKey.hostKeyAlgorithmNames = ["rsa-sha2-512", "rsa-sha2-256", "ssh-rsa"]`。
+  - `Signature` 增加 `hash`(sha1/sha256/sha512,本地签名固定 sha512)与
+    `signatureAlgorithmNames`、`read(from:algorithm:)`(按线上名记哈希)。
+  - `PublicKey.isValidSignature`:验签哈希按 `signature.hash` 选(原硬编码 SHA-1)。
+
+### Berth 侧配套(非 vendor)
+- `Core/SSH/SSHCompatAlgorithms.swift`:`SSHAlgorithms.berthCompatibility`(追加 DH
+  group14 sha256/sha1、AES128CTR、RSA host key;`.add` 保证现代算法优先)。
+  Mac `TerminalSession` 与 iOS `IOSTerminalSession` 的 settings 均启用。
+- `Core/SSH/SSHErrorMapper.swift`:协商失败人话化并透出诊断列表。
+- 验收:`docker/test-sshd/up-legacy.sh`(2224)四组合全过 —— group14-sha256+rsa-sha2-512、
+  group14-sha1+ssh-rsa(SHA-1)、curve25519+仅 RSA host key(内置 ECDH 路径验签)、
+  现代 sshd 回归;单测 120 项;`BERTH_M1_AUTOTEST` 对 2224 全流程 ALL_DONE。
 
 ## 升级 Citadel/nio-ssh 时
 本地 vendor 已脱离 SPM 版本管理。若要升级,需重新 vendor 对应版本并重放上述 `[Berth patch]`

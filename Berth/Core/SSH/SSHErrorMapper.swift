@@ -25,6 +25,13 @@ enum SSHErrorMapper {
                 return String(localized: "认证失败:服务器拒绝了用户名、密码或密钥。")
             }
         }
+        // 密钥交换协商失败:双方算法列表无交集(vendor 补丁会在 diagnostics 里带上双方列表)。
+        // 已追加 DH group14 / aes128-ctr / RSA host key 兼容,仍失败说明服务器算法更冷门,
+        // 把原始列表透出便于 issue 排查。
+        if raw.contains("keyExchangeNegotiationFailure") {
+            return String(localized: "无法与 \(hostname) 就加密算法达成一致:服务器要求的密钥交换/加密/主机密钥算法不在支持范围内。请把下面的诊断信息反馈给开发者:")
+                + "\n" + raw
+        }
         if raw.localizedCaseInsensitiveContains("refused") {
             return String(localized: "连不上 \(hostname):\(String(port)):连接被拒绝,检查端口号和 sshd 是否在运行。")
         }

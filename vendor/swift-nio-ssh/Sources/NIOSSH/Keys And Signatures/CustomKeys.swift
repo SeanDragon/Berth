@@ -35,6 +35,26 @@ public protocol NIOSSHSignatureProtocol {
 
     /// Reads this Signature from the buffer using the same format implemented in `write(to:)`
     static func read(from buffer: inout ByteBuffer) throws -> Self
+
+    /// [Berth patch] All wire algorithm names this signature implementation can parse.
+    /// RFC 8332: a single RSA key type serves `ssh-rsa`, `rsa-sha2-256` and `rsa-sha2-512`,
+    /// which only differ in hash. Defaults to `[signaturePrefix]`.
+    static var signatureAlgorithmNames: [String] { get }
+
+    /// [Berth patch] Reads a signature whose wire algorithm name was `algorithm`
+    /// (guaranteed to be one of `signatureAlgorithmNames`). Lets multi-name
+    /// implementations (RSA) remember which hash the signer used. Defaults to `read(from:)`.
+    static func read(from buffer: inout ByteBuffer, algorithm: String) throws -> Self
+}
+
+public extension NIOSSHSignatureProtocol {
+    /// [Berth patch] Default: the implementation only answers to its own prefix.
+    static var signatureAlgorithmNames: [String] { [signaturePrefix] }
+
+    /// [Berth patch] Default: ignore the algorithm name.
+    static func read(from buffer: inout ByteBuffer, algorithm: String) throws -> Self {
+        try read(from: &buffer)
+    }
 }
 
 internal extension NIOSSHSignatureProtocol {
@@ -55,6 +75,12 @@ public protocol NIOSSHPublicKeyProtocol {
     /// OpenSSH 8.8+ requires (it rejects the legacy SHA-1 `ssh-rsa` signature).
     static var userAuthPrefix: String { get }
 
+    /// [Berth patch] Host-key algorithm names this key type can serve during key exchange,
+    /// in preference order. Advertised in KEXINIT server_host_key_algorithms (client role).
+    /// RFC 8332: RSA host keys serve `rsa-sha2-512`/`rsa-sha2-256`/`ssh-rsa` while the key
+    /// blob type stays `ssh-rsa`. Defaults to `[publicKeyPrefix]`.
+    static var hostKeyAlgorithmNames: [String] { get }
+
     /// The raw reprentation of this publc key as a blob.
     var rawRepresentation: Data { get }
 
@@ -72,6 +98,9 @@ public protocol NIOSSHPublicKeyProtocol {
 public extension NIOSSHPublicKeyProtocol {
     /// [Berth patch] Default: advertise the key type itself as the user-auth algorithm.
     static var userAuthPrefix: String { publicKeyPrefix }
+
+    /// [Berth patch] Default: the key type serves only its own algorithm name.
+    static var hostKeyAlgorithmNames: [String] { [publicKeyPrefix] }
 }
 
 internal extension NIOSSHPublicKeyProtocol {
@@ -81,6 +110,10 @@ internal extension NIOSSHPublicKeyProtocol {
 
     var userAuthPrefix: String {
         Self.userAuthPrefix
+    }
+
+    var hostKeyAlgorithmNames: [String] {
+        Self.hostKeyAlgorithmNames
     }
 }
 

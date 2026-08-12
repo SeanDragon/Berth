@@ -1298,12 +1298,14 @@ final class TerminalSession: Identifiable {
 
     private func settings(for hop: HostSpec, useTransient: Bool) throws -> SSHClientSettings {
         let method = try authenticationMethod(for: hop, useTransient: useTransient)
-        return SSHClientSettings(
+        var settings = SSHClientSettings(
             host: hop.hostname,
             port: hop.port,
             authenticationMethod: { method },
             hostKeyValidator: hostKeyValidator(for: hop)
         )
+        settings.algorithms = .berthCompatibility
+        return settings
     }
 
     private static func keyAuthentication(username: String, keyText: String, passphrase: String?) throws -> SSHAuthenticationMethod {

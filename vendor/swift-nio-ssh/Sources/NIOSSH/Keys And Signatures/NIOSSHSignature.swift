@@ -234,9 +234,12 @@ extension ByteBuffer {
             } else if bytesView.elementsEqual(NIOSSHSignature.ecdsaP521SignaturePrefix) {
                 return try buffer.readECDSAP521Signature()
             } else {
+                // [Berth patch] Match any of the implementation's algorithm names (RFC 8332:
+                // RSA signatures arrive as ssh-rsa / rsa-sha2-256 / rsa-sha2-512 depending on
+                // the negotiated host key algorithm) and tell it which name was on the wire.
                 for signature in NIOSSHPublicKey.customSignatures {
-                    if bytesView.elementsEqual(signature.signaturePrefix.utf8) {
-                        let signature = try signature.read(from: &buffer)
+                    for algorithm in signature.signatureAlgorithmNames where bytesView.elementsEqual(algorithm.utf8) {
+                        let signature = try signature.read(from: &buffer, algorithm: algorithm)
                         return NIOSSHSignature(backingSignature: .custom(signature))
                     }
                 }

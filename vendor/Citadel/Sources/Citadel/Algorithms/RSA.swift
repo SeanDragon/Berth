@@ -16,6 +16,9 @@ extension Insecure.RSA {
         // [Berth patch] Advertise SHA-2 RSA in user auth. The key blob type stays "ssh-rsa";
         // OpenSSH 8.8+ rejects the SHA-1 "ssh-rsa" signature algorithm but accepts this.
         public static let userAuthPrefix = "rsa-sha2-512"
+        // [Berth patch] Host-key algorithms an RSA key serves during KEX (RFC 8332),
+        // preference order: SHA-2 first, legacy SHA-1 last for old bastion hosts (issue #12).
+        public static let hostKeyAlgorithmNames = ["rsa-sha2-512", "rsa-sha2-256", "ssh-rsa"]
         public static let keyExchangeAlgorithms = ["diffie-hellman-group1-sha1", "diffie-hellman-group14-sha1"]
         
         // PublicExponent e
@@ -76,15 +79,32 @@ extension Insecure.RSA {
                 return false
             }
             
-            var clientSignature = [UInt8](repeating: 0, count: 20)
+            // [Berth patch] Hash per the wire algorithm the signature arrived under
+            // (rsa-sha2-512 / rsa-sha2-256 / legacy ssh-rsa) instead of hard-coded SHA-1.
+            // KEX host-key signatures sign the raw exchange hash H; RSASSA-PKCS1-v1_5
+            // hashes the message with the negotiated hash before the RSA operation.
             let digest = Array(digest)
-            CCryptoBoringSSL_SHA1(digest, digest.count, &clientSignature)
-            
+            let hashed: [UInt8]
+            let nid: Int32
+            switch signature.hash {
+            case .sha1:
+                var out = [UInt8](repeating: 0, count: 20)
+                CCryptoBoringSSL_SHA1(digest, digest.count, &out)
+                hashed = out
+                nid = NID_sha1
+            case .sha256:
+                hashed = Array(SHA256.hash(data: Data(digest)))
+                nid = NID_sha256
+            case .sha512:
+                hashed = Array(SHA512.hash(data: Data(digest)))
+                nid = NID_sha512
+            }
+
             let signature = Array(signature.rawRepresentation)
             return CCryptoBoringSSL_RSA_verify(
-                NID_sha1,
-                clientSignature,
-                20,
+                nid,
+                hashed,
+                hashed.count,
                 signature,
                 signature.count,
                 context
@@ -144,28 +164,60 @@ extension Insecure.RSA {
         // [Berth patch] Written into the user-auth signature blob; must match the advertised
         // userAuthPrefix. Signing uses SHA-512 accordingly (see PrivateKey.signature).
         public static let signaturePrefix = "rsa-sha2-512"
-        
+
+        // [Berth patch] One RSA key answers to three wire names that differ only in hash
+        // (RFC 8332). Track which one this signature arrived under so verification can
+        // hash accordingly. Locally created signatures (user auth) are always SHA-512.
+        public enum Hash: Sendable {
+            case sha1, sha256, sha512
+        }
+
+        public static let signatureAlgorithmNames = ["rsa-sha2-512", "rsa-sha2-256", "ssh-rsa"]
+
+        public let hash: Hash
         public let rawRepresentation: Data
-        
+
         public init<D>(rawRepresentation: D) where D : DataProtocol {
             self.rawRepresentation = Data(rawRepresentation)
+            self.hash = .sha512
         }
-        
+
+        init<D>(rawRepresentation: D, hash: Hash) where D : DataProtocol {
+            self.rawRepresentation = Data(rawRepresentation)
+            self.hash = hash
+        }
+
         public func withUnsafeBytes<R>(_ body: (UnsafeRawBufferPointer) throws -> R) rethrows -> R {
             try rawRepresentation.withUnsafeBytes(body)
         }
-        
+
         public func write(to buffer: inout ByteBuffer) -> Int {
             // For SSH-RSA, the key format is the signature without lengths or paddings
             return buffer.writeSSHString(rawRepresentation)
         }
-        
+
         public static func read(from buffer: inout ByteBuffer) throws -> Signature {
             guard let buffer = buffer.readSSHBuffer() else {
                 throw RSAError(message: "Invalid signature format")
             }
-            
+
             return Signature(rawRepresentation: buffer.getData(at: 0, length: buffer.readableBytes)!)
+        }
+
+        // [Berth patch] Wire-name-aware variant used when parsing incoming signatures.
+        public static func read(from buffer: inout ByteBuffer, algorithm: String) throws -> Signature {
+            guard let buffer = buffer.readSSHBuffer() else {
+                throw RSAError(message: "Invalid signature format")
+            }
+
+            let hash: Hash
+            switch algorithm {
+            case "ssh-rsa": hash = .sha1
+            case "rsa-sha2-256": hash = .sha256
+            default: hash = .sha512
+            }
+
+            return Signature(rawRepresentation: buffer.getData(at: 0, length: buffer.readableBytes)!, hash: hash)
         }
     }
     

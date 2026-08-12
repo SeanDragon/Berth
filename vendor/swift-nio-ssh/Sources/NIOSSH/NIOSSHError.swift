@@ -87,6 +87,14 @@ extension NIOSSHError {
 
     internal static let keyExchangeNegotiationFailure = NIOSSHError(type: .keyExchangeNegotiationFailure, diagnostics: nil)
 
+    /// [Berth patch] Same failure, but says which algorithm lists failed to intersect so the
+    /// user-facing error can name the server's offer (issue #12: bastion hosts with legacy
+    /// algorithm sets were failing with a bare "keyExchangeNegotiationFailure").
+    @inline(never)
+    internal static func keyExchangeNegotiationFailure(diagnostics: String) -> NIOSSHError {
+        NIOSSHError(type: .keyExchangeNegotiationFailure, diagnostics: diagnostics)
+    }
+
     @inline(never)
     internal static func unsupportedVersion(_ version: String) -> NIOSSHError {
         NIOSSHError(type: .unsupportedVersion, diagnostics: "Version \(version) offered by the remote peer is not supported")

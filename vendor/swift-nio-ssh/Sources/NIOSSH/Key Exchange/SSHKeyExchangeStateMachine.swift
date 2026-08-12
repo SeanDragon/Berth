@@ -251,7 +251,9 @@ struct SSHKeyExchangeStateMachine {
         case .keyExchangeInitSent(exchange: var exchanger, negotiated: let negotiated):
             switch self.role {
             case .client:
-                guard message.hostKey.keyPrefix.elementsEqual(negotiated.negotiatedHostKeyAlgorithm.utf8) else {
+                // [Berth patch] The negotiated algorithm need not equal the key blob type:
+                // rsa-sha2-512 is served by an ssh-rsa key (RFC 8332). Ask the key instead.
+                guard message.hostKey.canServe(hostKeyAlgorithm: negotiated.negotiatedHostKeyAlgorithm) else {
                     throw NIOSSHError.invalidHostKeyForKeyExchange(expected: negotiated.negotiatedHostKeyAlgorithm,
                                                                    got: message.hostKey.keyPrefix)
                 }
@@ -410,7 +412,14 @@ struct SSHKeyExchangeStateMachine {
         }
 
         // Completed the loop with usable protocols, we have to throw.
-        throw NIOSSHError.keyExchangeNegotiationFailure
+        // [Berth patch] Say which lists failed to intersect — a bare failure is undebuggable
+        // from a user report (issue #12).
+        throw NIOSSHError.keyExchangeNegotiationFailure(diagnostics:
+            "no common kex/host-key algorithm; " +
+            "client kex: [\(clientAlgorithms.joined(separator: ", "))], " +
+            "server kex: [\(serverAlgorithms.joined(separator: ", "))], " +
+            "client host-key: [\(clientHostKeyAlgorithms.joined(separator: ", "))], " +
+            "server host-key: [\(serverHostKeyAlgorithms.joined(separator: ", "))]")
     }
 
     private func negotiatedTransportProtection(peerEncryptionAlgorithms: [Substring], peerMacAlgorithms: [Substring]) throws -> (encryption: Substring, mac: Substring) {
@@ -435,13 +444,20 @@ struct SSHKeyExchangeStateMachine {
 
         // Ok, the algorithm is that we choose the first encryption and MAC algorithm in the client's list that
         // is in the server's list as well.
+        // [Berth patch] Diagnostics on both failure paths (issue #12).
         guard let encryption = clientEncryptionAlgorithms.first(where: { serverEncryptionAlgorithms.contains($0) }) else {
-            throw NIOSSHError.keyExchangeNegotiationFailure
+            throw NIOSSHError.keyExchangeNegotiationFailure(diagnostics:
+                "no common cipher; " +
+                "client: [\(clientEncryptionAlgorithms.joined(separator: ", "))], " +
+                "server: [\(serverEncryptionAlgorithms.joined(separator: ", "))]")
         }
 
         // Ok great, now work out what we negotiated as a MAC.
         guard let mac = clientMACAlgorithms.first(where: { serverMACAlgorithms.contains($0) }) else {
-            throw NIOSSHError.keyExchangeNegotiationFailure
+            throw NIOSSHError.keyExchangeNegotiationFailure(diagnostics:
+                "no common MAC; " +
+                "client: [\(clientMACAlgorithms.joined(separator: ", "))], " +
+                "server: [\(serverMACAlgorithms.joined(separator: ", "))]")
         }
 
         return (encryption, mac)
@@ -523,7 +539,11 @@ extension SSHKeyExchangeStateMachine {
 
     static var supportedServerHostKeyAlgorithms: [Substring] {
         let bundledAlgorithms = bundledServerHostKeyAlgorithms
-        let customAlgorithms = NIOSSHPublicKey.customPublicKeyAlgorithms.map { Substring($0.publicKeyPrefix) }
+        // [Berth patch] A custom key type may serve several host-key algorithm names
+        // (RSA: rsa-sha2-512 / rsa-sha2-256 / ssh-rsa) — advertise all of them.
+        let customAlgorithms = NIOSSHPublicKey.customPublicKeyAlgorithms.flatMap { keyType in
+            keyType.hostKeyAlgorithmNames.map { Substring($0) }
+        }
 
         return bundledAlgorithms + customAlgorithms
     }

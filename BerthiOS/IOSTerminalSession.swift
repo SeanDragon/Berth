@@ -261,12 +261,14 @@ final class IOSTerminalSession {
             guard let self else { return false }
             return await self.requestHostKeyDecision(prompt)
         }
-        return SSHClientSettings(
+        var settings = SSHClientSettings(
             host: hop.hostname,
             port: hop.port,
             authenticationMethod: { method },
             hostKeyValidator: .custom(validator)
         )
+        settings.algorithms = .berthCompatibility
+        return settings
     }
 
     private func requestHostKeyDecision(_ prompt: HostKeyPrompt) async -> Bool {

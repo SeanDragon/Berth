@@ -95,6 +95,7 @@ targets:
       - path: Berth/Core/SSH/OpenSSHFormat.swift
       - path: Berth/Core/SSH/PrivateKeyFormat.swift
       - path: Berth/Core/SSH/SSHConnection.swift
+      - path: Berth/Core/SSH/SSHCompatAlgorithms.swift
       - path: Berth/Core/SSH/PortForwardService.swift
       - path: Berth/Core/SSH/ProxyConnector.swift
       - path: Berth/Core/SSH/SOCKS5.swift
