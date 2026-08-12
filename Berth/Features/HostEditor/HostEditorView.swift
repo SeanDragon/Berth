@@ -9,6 +9,8 @@ struct HostEditorView: View {
     let defaultGroupID: UUID?
     /// 「保存并连接」的自定义连接动作(如断线卡片:关掉失败会话再连);nil = 新开标签页连接
     var onConnect: ((Host) -> Void)? = nil
+    /// 普通「保存」后的动作(issue #11:断线卡片进来的编辑,保存也要立即对失败会话生效)
+    var onSave: ((Host) -> Void)? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -395,6 +397,8 @@ struct HostEditorView: View {
                 target.lastConnectedAt = Date()
                 _ = SessionManager.shared.open(spec: HostSpec.resolve(target, in: allHosts))
             }
+        } else if let onSave {
+            onSave(target)
         }
     }
 

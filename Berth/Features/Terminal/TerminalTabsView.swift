@@ -827,13 +827,14 @@ struct TerminalPaneView: View {
             KeyboardInteractivePromptSheet(prompt: prompt, session: session)
         }
         .sheet(item: $editingHost) { host in
-            HostEditorView(host: host, defaultGroupID: nil, onConnect: { updated in
-                // 用新配置重连:关掉失败的会话,重新解析 spec 开新会话(旧 spec 冻结了改动前的认证方式)
-                sessionManager.closePane(session)
-                let all = ((try? modelContext.fetch(FetchDescriptor<Host>())) ?? [updated]) + SSHConfigService.shared.mirrorHosts
-                updated.lastConnectedAt = Date()
-                _ = sessionManager.open(spec: HostSpec.resolve(updated, in: all))
-            })
+            // issue #11:从失败卡片进的编辑,「保存」也应立即生效 —— 否则卡片带着改动前的
+            // 旧 spec 继续杵着,看起来像什么都没发生。保存/保存并连接统一走重开
+            HostEditorView(
+                host: host,
+                defaultGroupID: nil,
+                onConnect: { reopenWithUpdatedHost($0) },
+                onSave: { reopenWithUpdatedHost($0) }
+            )
         }
         .confirmationDialog(
             "删除主机「\(session.spec.label)」?",
@@ -890,6 +891,14 @@ struct TerminalPaneView: View {
             }
         }
         sessionManager.closePane(session)
+    }
+
+    /// 用新配置重连:关掉失败的会话,重新解析 spec 开新会话(旧 spec 冻结了改动前的认证方式)
+    private func reopenWithUpdatedHost(_ updated: Host) {
+        sessionManager.closePane(session)
+        let all = ((try? modelContext.fetch(FetchDescriptor<Host>())) ?? [updated]) + SSHConfigService.shared.mirrorHosts
+        updated.lastConnectedAt = Date()
+        _ = sessionManager.open(spec: HostSpec.resolve(updated, in: all))
     }
 
     /// 断线横幅的编辑入口:托管主机直接编辑;config 镜像优先复用已转换的托管主机,
@@ -964,6 +973,16 @@ struct TerminalPaneView: View {
                     Text(PrivacyMode.shared.maskHost(in: session.spec.label, hostname: session.spec.hostname))
                         .font(.system(size: 16, weight: .semibold))
                     Spacer(minLength: 0)
+                    // issue #11:失败卡片要能立即关掉 —— 关闭该会话 pane,不必先重连成功
+                    Button {
+                        sessionManager.closePane(session)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("关闭会话")
                 }
                 Text(session.spec.isLocal
                     ? LocalShell.resolvedShellPath()
