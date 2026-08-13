@@ -11,6 +11,8 @@ struct WindowConfigurator: NSViewRepresentable {
     var keepsTitle = false
     /// 透明 chrome:窗口非不透明 + 背景透明,让侧栏的 behind-window 毛玻璃透出桌面
     var translucent = false
+    /// 给窗口打标记,供跨窗口定位(仪表盘里点「连接」要把主窗口拉到前面)
+    var identifier: NSUserInterfaceItemIdentifier?
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
@@ -24,6 +26,7 @@ struct WindowConfigurator: NSViewRepresentable {
 
     private func configure(_ window: NSWindow?) {
         guard let window else { return }
+        if let identifier { window.identifier = identifier }
         window.appearance = NSAppearance(named: appearanceName)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = keepsTitle ? .visible : .hidden

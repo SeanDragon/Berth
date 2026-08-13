@@ -20,7 +20,12 @@ struct TerminalTabsView: View {
     var body: some View {
         @Bindable var manager = sessionManager
         VStack(spacing: 0) {
-            if sessionManager.tabs.isEmpty {
+            if sessionManager.isDashboardVisible {
+                // ⌘0:终端区整体让给仪表盘。标签条还在标题栏上,点任一 chip 即切回终端;
+                // 会话本身完全不受影响(与切标签同一条路径,scrollback 由会话持有)
+                DashboardView(isEmbedded: true)
+                    .transition(.opacity)
+            } else if sessionManager.tabs.isEmpty {
                 emptyState
             } else if let tab = sessionManager.selectedTab {
                 if tab.isBroadcasting {
@@ -291,6 +296,16 @@ struct TerminalTabsView: View {
     /// Safari 式按钮组(标题栏右侧):一个大胶囊容器,内含各个圆形悬停按钮
     private var panelButtons: some View {
         HStack(spacing: 2) {
+            PanelIconButton(
+                symbol: "chart.bar.xaxis",
+                help: String(localized: "仪表盘:所有主机的资源状态(⌘0)"),
+                tint: sessionManager.isDashboardVisible ? ThemeStore.shared.current.accentColor : nil
+            ) {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    sessionManager.isDashboardVisible.toggle()
+                }
+            }
+            Divider().frame(height: 14).overlay(ThemeStore.shared.current.borderColor)
             PanelIconButton(
                 symbol: "sparkles",
                 help: String(localized: "AI 助手(⌘⇧A)"),

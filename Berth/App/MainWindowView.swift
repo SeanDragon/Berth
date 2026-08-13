@@ -54,7 +54,8 @@ struct MainWindowView: View {
         .background(WindowConfigurator(
             appearanceName: theme.current.appearanceName,
             backgroundColor: theme.current.backgroundNSColor,
-            translucent: translucentChrome
+            translucent: translucentChrome,
+            identifier: MainWindowRaiser.identifier
         ))
         .sheet(item: $quickConnect.directConnectRequest) { request in
             DirectConnectSheet(request: request)

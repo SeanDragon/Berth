@@ -14,6 +14,10 @@ macOS 15+ · Universal · Developer ID signed & notarized
 
 ## Features
 
+**Server dashboard.** ⌘0 puts every host on one screen: CPU, memory, disk, swap, network throughput, load and uptime, each with a CPU trend line. Hosts you already have a terminal open to reuse that connection; the rest get a lightweight one with no PTY attached. Background polling never throws a dialog at you — a host that needs its fingerprint confirmed or an MFA code says so on its card and picks itself up once you've dealt with it. Tear the dashboard into its own window to keep it on a second display.
+
+![Berth dashboard](site/public/assets/shots/dashboard.png)
+
 **AI assistant that operates the server.** ⌘⇧A opens a chat panel — ask "how much disk is left?" and the AI runs commands on the current SSH session, reads the output, and answers, with per-command approval by default. The AI knows which directory your terminal is in: exact with shell integration enabled, and zero-config probing when it isn't — "check the logs in this directory" just works. Select an error in the terminal and press ⌘⌥A to ask about it. 22 providers work out of the box: Anthropic, OpenAI, DeepSeek, Kimi, Zhipu, Qwen, Gemini, Grok and more, aggregators like OpenRouter and Together, plus local models via Ollama and LM Studio (no key needed). The API key lives in the Keychain only.
 
 **Connection reuse & infinite splits.** ⌘T tabs and ⌘D splits share one SSH channel — no second handshake. Nest splits without limit; `exit` collapses the pane.

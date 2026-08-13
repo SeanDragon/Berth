@@ -95,6 +95,17 @@ BERTH_M1_AUTOTEST=1 BERTH_TRANSIENT_STORE=1 \
     sha256/sha1 KEX、aes128-ctr、RSA host key(rsa-sha2-512/256+ssh-rsa 验签,vendor
     补丁)via `SSHAlgorithms.berthCompatibility`(Mac+iOS);协商失败错误带双方算法列表。
     验收:`docker/test-sshd/up-legacy.sh`(2224)四组合 + M1 autotest ALL_DONE
+  - [x] 服务器仪表盘(⌘0 主窗口内切换 / 侧栏 📊 / ⌘P;「仪表盘(新窗口)」可撕成独立窗口
+    常驻第二块屏,两种形态共用同一个采集引擎,按观察者计数启停):所有主机的 CPU/内存/磁盘/
+    交换/网络速率/负载/进程/温度/运行时长一屏看完,每卡片带 CPU 走势 sparkline。
+    拨号逻辑抽成 `Core/SSH/SSHDialer.swift`(终端会话与监控共用,交互回调可注入);
+    采集脚本+解析在 `Core/SSH/ServerMetrics.swift`(Linux 走 /proc 原始计数器,跨两次
+    采样求 CPU 占用与网络速率;macOS/BSD 用 sysctl/vm_stat/netstat 兜底);轮询引擎
+    `Core/Services/ServerMonitor.swift`(已有终端会话则借其连接,否则自建**不开 PTY**
+    的常驻连接;并发拨号封顶 4、失败指数退避;**后台绝不弹窗** —— 未确认的主机密钥/
+    MFA/Touch ID 门禁分别落到「需确认/需授权」卡片,授权按钮过一次 Touch ID 解锁本次运行)。
+    验收:`BERTH_DASHBOARD_AUTOTEST=1`(菜单接线 → 内嵌可见 → 在线卡片有真实 CPU/内存/磁盘
+    → 借用终端连接 → 关掉会话后自建连接 → 离线原因 → 撕成独立窗口后采集不断 → 两种形态自截图)
   - [ ] 本地回显(predictive echo)完整版 —— 触及 SwiftTerm 渲染,需交互测延迟,暂缓
 - [~] M6 — iOS 版(`BerthiOS` target,`xcodegen generate` 后用
   `xcodebuildmcp simulator build-and-run --project-path Berth.xcodeproj --scheme BerthiOS --simulator-name "iPhone 17 Pro Max"`):

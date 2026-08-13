@@ -81,6 +81,18 @@ struct CommandPaletteView: View {
             PaletteCommand(id: "find", title: String(localized: "在终端中查找"), subtitle: "⌘F", icon: "magnifyingglass", isEnabled: hasSession) {
                 m.requestSearch()
             },
+            PaletteCommand(
+                id: "dashboard",
+                title: m.isDashboardVisible ? String(localized: "返回终端") : String(localized: "仪表盘(所有主机状态)"),
+                subtitle: "⌘0",
+                icon: "chart.bar.xaxis"
+            ) {
+                m.isDashboardVisible.toggle()
+            },
+            PaletteCommand(id: "dashboard-window", title: String(localized: "仪表盘(新窗口)"), icon: "macwindow.on.rectangle") {
+                m.isDashboardVisible = false
+                openWindow(id: "dashboard")
+            },
             PaletteCommand(id: "keys", title: String(localized: "密钥管理"), icon: "key") {
                 openWindow(id: "keys")
             },

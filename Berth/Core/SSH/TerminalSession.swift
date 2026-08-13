@@ -1,8 +1,6 @@
 import AppKit
 import Citadel
-import Crypto
 import Foundation
-import LocalAuthentication
 import NIOCore
 import NIOSSH
 import Observation
@@ -40,25 +38,15 @@ final class TerminalSession: Identifiable {
         }
     }
 
+    /// 拨号相关的错误(缺密钥文件 / Touch ID 未通过等)在 `SSHDialer.DialError`,
+    /// 这里只留会话自身的错误。
     enum SessionError: LocalizedError {
-        case unsupportedKey
-        case missingKeyFile
-        case missingStoredKey
-        case authenticationGateFailed
         case notConnected
         case localShellFailed(String)
         case localShellExited(Int32?, String)
 
         var errorDescription: String? {
             switch self {
-            case .unsupportedKey:
-                return String(localized: "无法解析私钥文件:目前支持 OpenSSH 格式的 ed25519 / RSA 私钥。若密钥带 passphrase,请确认已正确填写。")
-            case .missingKeyFile:
-                return String(localized: "该主机设了密钥认证,但没有指定私钥文件。请在主机设置里选一把密钥,或改用密码认证。")
-            case .missingStoredKey:
-                return String(localized: "找不到该主机引用的密钥,请在「密钥」页检查或重新选择。")
-            case .authenticationGateFailed:
-                return String(localized: "身份验证未通过,已取消连接。可在设置中关闭「使用密钥前要求 Touch ID」。")
             case .notConnected:
                 return String(localized: "未连接,无法打开 SFTP。")
             case .localShellFailed(let path):
@@ -118,8 +106,6 @@ final class TerminalSession: Identifiable {
     @ObservationIgnored private var willBorrow: SSHConnection?
     /// 本次运行是否走了借用路径(借用会话不自动重连,避免网络抖动时多会话各自新建 TCP 造成连接风暴)
     @ObservationIgnored private var isBorrower = false
-    /// 跳板链上的中间 client,必须保活以维持隧道;所有权在建立后转入 SSHConnection
-    @ObservationIgnored private var jumpClients: [SSHClient] = []
     @ObservationIgnored private var forwardService: PortForwardService?
     @ObservationIgnored private var sessionTask: Task<Void, Never>?
     @ObservationIgnored private var stdinWriter: AsyncStream<StdinEvent>.Continuation?
@@ -246,23 +232,14 @@ final class TerminalSession: Identifiable {
             stdinWriter?.finish()
             stdinWriter = nil
             let releasing = self.connection
-            // 连接建立中途失败(如跳板链某一跳出错)时,已连上的跳板还没转入 SSHConnection,
-            // 留在 jumpClients 里,须在此关闭,否则泄漏半开连接(还会占满服务器 MaxStartups)
-            let orphanedJumps = self.jumpClients
             self.client = nil
             self.connection = nil
-            self.jumpClients = []
             // 本地进程兜底:正常路径已在 runLocalSession 内退出/终止,这里防泄漏
             if let pty = self.localPty {
                 if pty.running { pty.terminate() }
                 self.localPty = nil
             }
             sessionTask = nil
-            if !orphanedJumps.isEmpty {
-                Task.detached {
-                    for jump in orphanedJumps.reversed() { try? await jump.close() }
-                }
-            }
             // 引用归零才真正关闭底层连接/跳板;借用会话的 release 不会误关共享连接
             releasing?.release()
             // 远端 shell 正常退出(exit/logout → PTY EOF,干净关闭)→ 关掉该 pane,不重连;
@@ -278,6 +255,7 @@ final class TerminalSession: Identifiable {
     /// 连接/认证阶段自家抛的错误类型 —— 这些永远不该被归类成「shell 正常退出」
     private static func isConnectionStageError(_ error: Error) -> Bool {
         error is SessionError
+            || error is SSHDialer.DialError
             || error is PrivateKeyFormat.ConversionError
             || error is KeyboardInteractiveAuthError
             || error is HostKeyError
@@ -916,48 +894,30 @@ final class TerminalSession: Identifiable {
 
     // MARK: - 连接实现
 
-    /// 建立到目标主机的 SSHClient:无跳板则直连;有跳板则连最外层跳板后逐跳 jump。
-    /// 中间跳板的 client 必须保活(隧道依赖它),存入 jumpClients。
-    private func establishClient() async throws -> SSHClient {
-        guard !spec.jump.isEmpty else {
-            return try await connectEntry(to: spec, useTransient: true)
-        }
-
-        // 连最外层跳板
-        let first = spec.jump[0]
-        state = .connecting(detail: String(localized: "正在连接跳板机 \(first.hostname):\(String(first.port))…"))
-        var current = try await connectEntry(to: first, useTransient: false)
-        jumpClients.append(current)
-
-        // 逐跳 jump 到后续跳板
-        for hop in spec.jump.dropFirst() {
-            state = .connecting(detail: String(localized: "经跳板机 → \(hop.hostname):\(String(hop.port))…"))
-            current = try await current.jump(to: try settings(for: hop, useTransient: false))
-            jumpClients.append(current)
-        }
-
-        // 最后 jump 到目标本机
-        state = .connecting(detail: String(localized: "经跳板机 → \(spec.hostname):\(String(spec.port))…"))
-        return try await current.jump(to: try settings(for: spec, useTransient: true))
-    }
-
-    /// 最外层 TCP 连接:若配了代理,先经代理再交给 Citadel;否则直连。
-    private func connectEntry(to hop: HostSpec, useTransient: Bool) async throws -> SSHClient {
-        let clientSettings = try settings(for: hop, useTransient: useTransient)
-        guard spec.proxy.isEnabled else {
-            return try await SSHClient.connect(to: clientSettings)
-        }
-        state = .connecting(detail: String(localized: "经代理 \(spec.proxy.host):\(String(spec.proxy.port)) 连接 \(hop.hostname):\(String(hop.port))…"))
-        let proxyPassword = spec.proxy.requiresAuth
-            ? try KeychainStore.read(account: KeychainStore.proxyPasswordAccount(for: spec.hostID))
-            : nil
-        let channel = try await ProxyConnector.connect(
-            through: spec.proxy,
-            proxyPassword: proxyPassword,
-            to: hop.hostname,
-            port: hop.port
+    /// 交互式拨号器:进度回写 state,主机密钥/MFA 弹窗问用户,用密钥前过 Touch ID。
+    /// (拨号逻辑本身与仪表盘监控共用,见 SSHDialer)
+    private func makeDialer() -> SSHDialer {
+        SSHDialer(
+            spec: spec,
+            transientPassword: transientPassword,
+            transientPassphrase: transientPassphrase,
+            onProgress: { [weak self] detail in
+                self?.state = .connecting(detail: detail)
+            },
+            hostKeyDecision: { [weak self] prompt in
+                guard let self else { return false }
+                return await self.requestHostKeyDecision(prompt)
+            },
+            keyboardInteractive: { [weak self] challenge in
+                await self?.requestKeyboardInteractiveAnswers(challenge)
+            },
+            keyGate: { [weak self] in
+                try await SSHDialer.touchIDGate(
+                    reason: String(localized: "使用私钥连接 \(self?.spec.label ?? "")"),
+                    onProgress: { detail in self?.state = .connecting(detail: detail) }
+                )
+            }
         )
-        return try await SSHClient.connect(on: channel, settings: clientSettings)
     }
 
     private func runSession() async throws {
@@ -974,15 +934,11 @@ final class TerminalSession: Identifiable {
         } else {
             isBorrower = false
             willBorrow = nil
-            // 目标或任一跳板用密钥时,连接前统一过一次 Touch ID(避免链路上多次弹窗)
-            let usesKeys = ([spec] + spec.jump).contains { $0.authMethod != .password }
-            if usesKeys { try await requireTouchIDIfEnabled() }
-            let established = try await establishClient()
+            let outcome = try await makeDialer().dial()
             // 跳板链所有权转入 SSHConnection,由引用计数统一管理关闭
-            connection = SSHConnection(client: established, jumpClients: jumpClients)
-            jumpClients = []
+            connection = SSHConnection(client: outcome.client, jumpClients: outcome.jumpClients)
             connection.retain()
-            client = established
+            client = outcome.client
             state = .connecting(detail: String(localized: "认证成功,正在打开终端通道…"))
         }
         self.client = client
@@ -1237,99 +1193,6 @@ final class TerminalSession: Identifiable {
         return (text, exitCode)
     }
 
-
-    /// 为某一跳(目标或跳板)构建认证方式。凭据按该跳自己的 hostID 从 Keychain 解析;
-    /// useTransient 仅对目标本机成立(临时直连时用户当场输入的密码/passphrase)。
-    private func authenticationMethod(for hop: HostSpec, useTransient: Bool) throws -> SSHAuthenticationMethod {
-        let transientPW = useTransient ? transientPassword : nil
-        let transientPP = useTransient ? transientPassphrase : nil
-        switch hop.authMethod {
-        case .password:
-            let password = try transientPW
-                ?? KeychainStore.read(account: KeychainStore.passwordAccount(for: hop.hostID))
-                ?? ""
-            // password 失败自动转 keyboard-interactive(堡垒机 MFA,issue #12):
-            // 第一轮 Password: 提示自动用存储密码作答,MFA 动态码弹 sheet 问用户
-            let delegate = KeyboardInteractiveAuthDelegate(
-                username: hop.username,
-                password: password
-            ) { [weak self] challenge in
-                await self?.requestKeyboardInteractiveAnswers(challenge)
-            }
-            return .custom(delegate)
-
-        case .privateKeyFile:
-            guard let path = hop.privateKeyPath, !path.isEmpty else { throw SessionError.missingKeyFile }
-            let expanded = NSString(string: path).expandingTildeInPath
-            let keyText = try String(contentsOfFile: expanded, encoding: .utf8)
-            let passphrase = try transientPP
-                ?? KeychainStore.read(account: KeychainStore.passphraseAccount(for: hop.hostID))
-            return try Self.keyAuthentication(username: hop.username, keyText: keyText, passphrase: passphrase)
-
-        case .storedKey:
-            guard let keyID = hop.keyID,
-                  let material = try KeychainStore.read(account: KeychainStore.privateKeyAccount(for: keyID)) else {
-                throw SessionError.missingStoredKey
-            }
-            // 生成的密钥存 raw ed25519(base64 32 字节);导入的存 OpenSSH PEM
-            if let raw = Data(base64Encoded: material), raw.count == 32,
-               let key = try? Curve25519.Signing.PrivateKey(rawRepresentation: raw) {
-                return .ed25519(username: hop.username, privateKey: key)
-            }
-            let passphrase = try KeychainStore.read(account: KeychainStore.keyPassphraseAccount(for: keyID))
-            return try Self.keyAuthentication(username: hop.username, keyText: material, passphrase: passphrase)
-
-        case .agent:
-            guard let agent = SSHAgentClient.fromEnvironment() else { throw AgentAuthError.noAgent }
-            let identities = (try? agent.listIdentities()) ?? []
-            let delegate = AgentAuthDelegate(username: hop.username, agent: agent, identities: identities)
-            guard delegate.hasUsableKeys else { throw AgentAuthError.noIdentities }
-            return .custom(delegate)
-        }
-    }
-
-    private func hostKeyValidator(for hop: HostSpec) -> SSHHostKeyValidator {
-        let validator = InteractiveHostKeyValidator(hostname: hop.hostname, port: hop.port) { [weak self] prompt in
-            guard let self else { return false }
-            return await self.requestHostKeyDecision(prompt)
-        }
-        return .custom(validator)
-    }
-
-    private func settings(for hop: HostSpec, useTransient: Bool) throws -> SSHClientSettings {
-        let method = try authenticationMethod(for: hop, useTransient: useTransient)
-        var settings = SSHClientSettings(
-            host: hop.hostname,
-            port: hop.port,
-            authenticationMethod: { method },
-            hostKeyValidator: hostKeyValidator(for: hop)
-        )
-        settings.algorithms = .berthCompatibility
-        return settings
-    }
-
-    private static func keyAuthentication(username: String, keyText: String, passphrase: String?) throws -> SSHAuthenticationMethod {
-        // 磁盘上的私钥文件常是老式 PKCS#1/PKCS#8 PEM(~/.ssh/id_rsa、云厂商 .pem),
-        // 归一化/解密/诊断统一走 parseForAuth(与 iOS、密钥导入同口径)。文件本身不动。
-        switch try PrivateKeyFormat.parseForAuth(keyText, passphrase: passphrase).key {
-        case .ed25519(let key): return .ed25519(username: username, privateKey: key)
-        case .rsa(let key): return .rsa(username: username, privateKey: key)
-        }
-    }
-
-    /// 规格 5.4:读取私钥用于连接前可要求 Touch ID(设置项,默认开)
-    private func requireTouchIDIfEnabled() async throws {
-        let enabled = UserDefaults.standard.object(forKey: SettingsKeys.requireTouchIDForKeys) as? Bool ?? true
-        guard enabled else { return }
-        state = .connecting(detail: String(localized: "等待身份验证(Touch ID)…"))
-        let context = LAContext()
-        do {
-            // deviceOwnerAuthentication:优先生物识别,失败回退登录密码
-            try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: String(localized: "使用私钥连接 \(spec.label)"))
-        } catch {
-            throw SessionError.authenticationGateFailed
-        }
-    }
 }
 
 // MARK: - TerminalViewDelegate(AppKit 主线程回调)

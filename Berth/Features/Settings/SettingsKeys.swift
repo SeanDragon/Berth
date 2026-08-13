@@ -41,4 +41,8 @@ enum SettingsKeys {
     static let autoCheckUpdates = "app.autoCheckUpdates"
     /// 用户选择跳过的版本号(该版本不再提示,新版本会重新提示)
     static let skippedUpdateVersion = "app.skippedUpdateVersion"
+    /// 仪表盘采集间隔(秒,默认 5)
+    static let dashboardInterval = "dashboard.interval"
+    /// 仪表盘排序方式(DashboardSort.rawValue)
+    static let dashboardSort = "dashboard.sort"
 }

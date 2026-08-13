@@ -24,6 +24,8 @@ final class SessionManager {
     /// ⌘F:请求在当前会话打开搜索条(UI 消费后自增以触发)
     var searchRequestToken = 0
     var isInspectorVisible = false
+    /// ⌘0:终端区整体切成仪表盘(标签条留着,会话不受影响);独立窗口另有一份
+    var isDashboardVisible = false
     var isSFTPVisible = false
     var isSnippetsPanelVisible = false
     var isAIPanelVisible = false
@@ -89,6 +91,8 @@ final class SessionManager {
         reusing connection: SSHConnection? = nil,
         autoConnect: Bool = true
     ) -> TerminalSession {
+        // 新开会话 = 要看终端了,仪表盘让位
+        isDashboardVisible = false
         let session = TerminalSession(spec: spec)
         session.transientPassword = transientPassword
         session.transientPassphrase = transientPassphrase
@@ -170,6 +174,8 @@ final class SessionManager {
     /// 点击某个 pane 聚焦它(可能在别的标签)
     func focusPane(_ sessionID: UUID) {
         guard let tab = tabs.first(where: { $0.root.leafIDs().contains(sessionID) }) else { return }
+        // 主动去某个 pane = 要看终端,顺手从仪表盘退出来
+        isDashboardVisible = false
         let switchedTab = selectedTabID != tab.id
         selectedTabID = tab.id
         tab.focusedID = sessionID
@@ -292,6 +298,7 @@ final class SessionManager {
     /// 标签 chip / ⌘1-9:选中某标签(聚焦其上次的 pane)
     func selectTab(_ id: PaneTab.ID) {
         guard let tab = tabs.first(where: { $0.id == id }) else { return }
+        isDashboardVisible = false
         let switched = selectedTabID != id
         selectedTabID = id
         if switched {

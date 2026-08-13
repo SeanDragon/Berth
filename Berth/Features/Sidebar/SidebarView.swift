@@ -228,23 +228,22 @@ struct SidebarView: View {
         }
     }
 
-    /// 底部工具行:左「密钥」入口(独立窗口),右 主题配色 + 设置(应用级功能放左下角,macOS 惯例)
+    /// 底部工具行:左 密钥 + 仪表盘入口,右 主题配色 + 设置(应用级功能放左下角,macOS 惯例)。
+    /// 侧栏可以拖到很窄,这行一律用图标 —— 带文字时先被截成「仪…」,反而更难认
     private var keysRow: some View {
         HStack(spacing: 2) {
-            HStack(spacing: 6) {
-                Image(systemName: "key")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 16)
-                Text("密钥")
-                    .font(.system(size: 13))
+            PanelIconButton(symbol: "key", help: String(localized: "密钥管理(独立窗口)")) {
+                openWindow(id: "keys")
             }
-            .padding(.vertical, 6)
-            .padding(.horizontal, 8)
-            .contentShape(Rectangle())
-            .modifier(RowHover())
-            .onTapGesture { openWindow(id: "keys") }
-            .help("密钥管理(独立窗口)")
+            PanelIconButton(
+                symbol: "chart.bar.xaxis",
+                help: String(localized: "仪表盘:所有主机的资源状态(⌘0)"),
+                tint: sessionManager.isDashboardVisible ? theme.accentColor : nil
+            ) {
+                withAnimation(.easeOut(duration: 0.18)) {
+                    sessionManager.isDashboardVisible.toggle()
+                }
+            }
 
             Spacer()
 

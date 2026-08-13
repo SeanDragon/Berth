@@ -48,6 +48,7 @@ struct BerthApp: App {
                     await M2AcceptanceTest.runAICommandIfRequested(container: container)
                     await M2AcceptanceTest.runAIChatIfRequested(container: container)
                     await LocalShellAcceptanceTest.runIfRequested()
+                    await DashboardAcceptanceTest.runIfRequested(container: container)
                     // 并发跑:不挡在启动链前头,否则截不到会话恢复后的画面
                     Task { await WindowSnapshot.runIfRequested() }
                     await DemoScene.runIfRequested(container: container)
@@ -75,6 +76,19 @@ struct BerthApp: App {
                 ))
         }
         .windowResizability(.contentSize)
+        .modelContainer(container)
+
+        // 仪表盘:所有主机的资源状态一屏看完(采集只在窗口开着时进行)
+        Window("仪表盘", id: "dashboard") {
+            DashboardView()
+                .environment(sessionManager)
+                .frame(minWidth: 660, idealWidth: 980, minHeight: 420, idealHeight: 680)
+                .background(WindowConfigurator(
+                    appearanceName: ThemeStore.shared.current.appearanceName,
+                    backgroundColor: ThemeStore.shared.current.backgroundNSColor,
+                    keepsTitle: true
+                ))
+        }
         .modelContainer(container)
 
         // 会话模板:保存/恢复整套标签+分屏布局
@@ -236,6 +250,18 @@ struct TerminalCommands: Commands {
             }
 
             Divider()
+
+            // 主窗口内切换(⌘0);要常驻第二块屏的从仪表盘工具条撕成独立窗口
+            Button(SessionManager.shared.isDashboardVisible ? "返回终端" : "仪表盘") {
+                SessionManager.shared.isDashboardVisible.toggle()
+            }
+            .keyboardShortcut("0", modifiers: .command)
+
+            Button("仪表盘(新窗口)…") {
+                // 撕出去了就把主窗口还给终端,别留两份一样的仪表盘
+                SessionManager.shared.isDashboardVisible = false
+                openWindow(id: "dashboard")
+            }
 
             Button("会话模板…") {
                 openWindow(id: "workspaces")
