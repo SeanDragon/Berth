@@ -156,6 +156,12 @@ final class ServerMetricsTests: XCTestCase {
         XCTAssertNil(MetricFormat.temperature(3200))
     }
 
+    func testStatusBarFormatsLegacyServerInfoDiskAsPercent() {
+        let info = ServerInfo(parsing: "DISK=6.8G/9.7G (74%)")
+        XCTAssertEqual(info.diskPercent ?? 0, 0.74, accuracy: 0.0001)
+        XCTAssertTrue(StatusBarView.diskText(info)?.hasSuffix("74%") == true)
+    }
+
     /// 采集脚本的硬性约束:必须以 exit 0 结束,否则 Citadel 的 executeCommand 会抛错
     func testCollectionScriptEndsWithExitZero() {
         XCTAssertTrue(ServerMetrics.collectionScript.contains("exit 0"))

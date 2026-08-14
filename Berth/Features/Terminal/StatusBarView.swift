@@ -51,7 +51,7 @@ struct StatusBarView: View {
                             .help("服务器内存占用(\(stats.memory))")
                         separatorDot
                     }
-                    if let diskText = diskText(stats) {
+                    if let diskText = Self.diskText(stats) {
                         Text(diskText)
                             .foregroundStyle(.secondary)
                             .help("根分区已用/总量:\(stats.disk)")
@@ -199,9 +199,10 @@ struct StatusBarView: View {
         return String(localized: "内存 \(Int((usage.used / usage.total * 100).rounded()))%")
     }
 
-    private func diskText(_ info: ServerInfo) -> String? {
-        guard let percent = info.diskPercent else { return nil }
-        return String(localized: "磁盘 \(Int(percent))%")
+    /// ServerInfo 给的是 0...1 fraction;统一走 MetricFormat,避免 Int(0.74) 变成 0%。
+    static func diskText(_ info: ServerInfo) -> String? {
+        guard let fraction = info.diskPercent else { return nil }
+        return String(localized: "磁盘 \(MetricFormat.percent(fraction))")
     }
 
     private var forwardAllActive: Bool {
