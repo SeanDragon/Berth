@@ -57,6 +57,37 @@ struct PanelIconButton: View {
     }
 }
 
+/// 打开系统设置窗口并定位到指定分类;外观与 PanelIconButton 完全一致。
+struct PanelSettingsLink: View {
+    let symbol: String
+    let help: String
+    let tab: SettingsTab
+
+    @State private var hovering = false
+
+    var body: some View {
+        SettingsLink {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .medium))
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(hovering ? Color.primary.opacity(0.08) : .clear)
+                )
+                .scaleEffect(hovering ? 1.06 : 1)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableIconStyle())
+        .foregroundStyle(.secondary)
+        .simultaneousGesture(TapGesture().onEnded {
+            SettingsNavigation.shared.select(tab)
+        })
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 }
+        .help(help)
+    }
+}
+
 /// 图标钮按下回缩:.plain 没有任何按压反馈,鼠标按下瞬间给一点物理感
 struct PressableIconStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

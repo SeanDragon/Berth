@@ -22,6 +22,11 @@ struct AIChatPanelView: View {
     var body: some View {
         VStack(spacing: 0) {
             PanelHeader(title: String(localized: "AI 助手")) {
+                PanelSettingsLink(
+                    symbol: "gearshape",
+                    help: String(localized: "配置 AI 助手"),
+                    tab: .ai
+                )
                 if !controller.messages.isEmpty {
                     PanelIconButton(symbol: "trash", help: String(localized: "清空对话")) {
                         controller.clear()
@@ -181,6 +186,9 @@ struct AIChatPanelView: View {
             SettingsLink {
                 Text("打开设置…")
             }
+            .simultaneousGesture(TapGesture().onEnded {
+                SettingsNavigation.shared.select(.ai)
+            })
             .controlSize(.small)
             Spacer()
         }
@@ -257,6 +265,8 @@ struct AIChatMessageView: View {
                         }
                     case .divider:
                         Divider()
+                    case .table(let table):
+                        AIMarkdownTableView(table: table)
                     case .code(let language, let code):
                         AICodeBlockView(language: language, code: code, session: session)
                     }
@@ -282,6 +292,80 @@ struct AIChatMessageView: View {
             interpretedSyntax: .inlineOnlyPreservingWhitespace
         )
         return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+}
+
+// MARK: - 表格
+
+/// GFM 表格在窄侧栏内保持列宽稳定,内容较宽时横向滚动,不把整张表压成逐字换行。
+private struct AIMarkdownTableView: View {
+    let table: AIMarkdownTable
+
+    private var theme: TerminalTheme { ThemeStore.shared.current }
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            Grid(horizontalSpacing: 0, verticalSpacing: 0) {
+                GridRow {
+                    ForEach(table.headers.indices, id: \.self) { column in
+                        cell(table.headers[column], column: column, isHeader: true)
+                    }
+                }
+                ForEach(table.rows.indices, id: \.self) { row in
+                    GridRow {
+                        ForEach(table.headers.indices, id: \.self) { column in
+                            cell(table.rows[row][column], column: column, isHeader: false)
+                        }
+                    }
+                }
+            }
+        }
+        .background(theme.elevatedBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .stroke(theme.borderColor, lineWidth: 1)
+        )
+    }
+
+    private func cell(_ value: String, column: Int, isHeader: Bool) -> some View {
+        Text(rendered(value))
+            .font(.system(size: 11.5, weight: isHeader ? .semibold : .regular))
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(
+                minWidth: 72,
+                maxWidth: 180,
+                alignment: table.alignments[column].frameAlignment
+            )
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .background(isHeader ? theme.accentSoft : Color.clear)
+            .overlay(alignment: .trailing) {
+                if column < table.headers.count - 1 {
+                    Rectangle().fill(theme.borderColor).frame(width: 1)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(theme.borderColor).frame(height: 1)
+            }
+    }
+
+    private func rendered(_ text: String) -> AttributedString {
+        let options = AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+        return (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
+    }
+}
+
+private extension AITableAlignment {
+    var frameAlignment: Alignment {
+        switch self {
+        case .leading: .leading
+        case .center: .center
+        case .trailing: .trailing
+        }
     }
 }
 
@@ -324,16 +408,18 @@ private struct AICodeBlockView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(copied ? .green : .secondary)
-                Button {
-                    sendToTerminal()
-                } label: {
-                    Label(String(localized: "发送到终端"), systemImage: "arrow.turn.down.left")
-                        .font(.system(size: 10))
-                        .labelStyle(.titleAndIcon)
+                if !AICodeBlockClassifier.looksLikeTable(code) {
+                    Button {
+                        sendToTerminal()
+                    } label: {
+                        Label(String(localized: "发送到终端"), systemImage: "arrow.turn.down.left")
+                            .font(.system(size: 10))
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accentColor)
+                    .help(String(localized: "写入终端命令行,不自动回车"))
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.accentColor)
-                .help(String(localized: "写入终端命令行,不自动回车"))
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 5)

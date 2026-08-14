@@ -114,6 +114,79 @@ final class AIMarkdownParserTests: XCTestCase {
         XCTAssertEqual(AIMarkdownParser.parse("--"), [.text("--")])
     }
 
+    func testGFMTableAndColumnAlignment() {
+        let raw = """
+        名称 | 状态 | 占用
+        :--- | :---: | ---:
+        根目录 | **正常** | 74%
+        日志 | 警告 | 91%
+        """
+        XCTAssertEqual(AIMarkdownParser.parse(raw), [
+            .table(AIMarkdownTable(
+                headers: ["名称", "状态", "占用"],
+                alignments: [.leading, .center, .trailing],
+                rows: [
+                    ["根目录", "**正常**", "74%"],
+                    ["日志", "警告", "91%"],
+                ]
+            )),
+        ])
+    }
+
+    func testTableSupportsOuterPipesInlineCodeAndUnevenRows() {
+        let raw = """
+        | 键 | 值 |
+        | --- | --- |
+        | 命令 | `printf "a | b"` |
+        | 空值 |
+        | 多列 | 一 | 忽略 |
+        """
+        XCTAssertEqual(AIMarkdownParser.parse(raw), [
+            .table(AIMarkdownTable(
+                headers: ["键", "值"],
+                alignments: [.leading, .leading],
+                rows: [
+                    ["命令", "`printf \"a | b\"`"],
+                    ["空值", ""],
+                    ["多列", "一"],
+                ]
+            )),
+        ])
+    }
+
+    func testPipeTextWithoutSeparatorIsNotTable() {
+        XCTAssertEqual(
+            AIMarkdownParser.parse("A | B\n这不是分隔行"),
+            [.text("A | B\n这不是分隔行")]
+        )
+    }
+
+    func testCodeBlockTableClassification() {
+        XCTAssertTrue(AICodeBlockClassifier.looksLikeTable("""
+        +----+--------+
+        | ID | 状态   |
+        +----+--------+
+        | 1  | 正常   |
+        +----+--------+
+        """))
+        XCTAssertTrue(AICodeBlockClassifier.looksLikeTable("""
+        名称 | 状态
+        --- | ---
+        API | 正常
+        """))
+        XCTAssertTrue(AICodeBlockClassifier.looksLikeTable("""
+        ID    名称       状态
+        --    ---------- ----
+        1     Alice      正常
+        """))
+        XCTAssertTrue(AICodeBlockClassifier.looksLikeTable("""
+        ┌────┬──────┐
+        │ ID │ 状态 │
+        └────┴──────┘
+        """))
+        XCTAssertFalse(AICodeBlockClassifier.looksLikeTable("ps aux | grep nginx\ncat app.log | tail"))
+    }
+
     /// 代码块内的 "# 注释"、"- 参数" 不能被当成标题/列表
     func testBlockSyntaxInsideFenceIsLiteral() {
         XCTAssertEqual(

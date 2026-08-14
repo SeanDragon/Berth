@@ -3,6 +3,24 @@ import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// 设置窗口内的共享路由。SettingsLink 负责打开系统设置窗口,这里负责把已打开或
+/// 即将打开的 SettingsView 定位到调用方指定的分类。
+@MainActor
+@Observable
+final class SettingsNavigation {
+    static let shared = SettingsNavigation()
+
+    private(set) var tab: SettingsTab
+
+    init(tab: SettingsTab = .terminal) {
+        self.tab = tab
+    }
+
+    func select(_ tab: SettingsTab) {
+        self.tab = tab
+    }
+}
+
 /// 基础设置(M1)。M2 扩展:主题、字体族、scrollback、快捷键、安全策略等。
 struct SettingsView: View {
     @AppStorage(SettingsKeys.terminalFontSize) private var fontSize: Double = 13
@@ -29,7 +47,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @State private var aiProviderID = AIProvider.all[0].id
     @State private var aiModelIsCustom = false
-    @State private var tab: SettingsTab = .terminal
+    @State private var navigation = SettingsNavigation.shared
     @State private var aiKeyDraft = ""
     @State private var aiKeySaved = ""
     @State private var aiKeyNote: String?
@@ -67,7 +85,7 @@ struct SettingsView: View {
             sidebar
             Divider().overlay(theme.borderColor)
             Form {
-                switch tab {
+                switch navigation.tab {
                 case .terminal: terminalPage
                 case .session: sessionPage
                 case .ai: aiPage
@@ -98,7 +116,9 @@ struct SettingsView: View {
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SettingsTab.allCases) { item in
-                SettingsTabRow(item: item, isSelected: tab == item) { tab = item }
+                SettingsTabRow(item: item, isSelected: navigation.tab == item) {
+                    navigation.select(item)
+                }
             }
             Spacer(minLength: 0)
         }

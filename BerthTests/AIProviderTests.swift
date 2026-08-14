@@ -3,6 +3,13 @@ import XCTest
 
 final class AIProviderTests: XCTestCase {
 
+    @MainActor
+    func testSettingsNavigationSelectsAIPage() {
+        let navigation = SettingsNavigation(tab: .terminal)
+        navigation.select(.ai)
+        XCTAssertEqual(navigation.tab, .ai)
+    }
+
     /// 预设是设置页下拉的数据源:id 唯一、都有模型可选、地址合法
     func testPresetsAreWellFormed() {
         let ids = AIProvider.all.map(\.id)
