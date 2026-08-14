@@ -32,6 +32,7 @@ final class AIProviderTests: XCTestCase {
             "siliconflow": "https://api.siliconflow.cn/v1/chat/completions",
             "openrouter": "https://openrouter.ai/api/v1/chat/completions",
             "groq": "https://api.groq.com/openai/v1/chat/completions",
+            "fireworks": "https://api.fireworks.ai/inference/v1/chat/completions",
             "xai": "https://api.x.ai/v1/chat/completions",
             "ollama": "http://127.0.0.1:11434/v1/chat/completions",
             "lmstudio": "http://127.0.0.1:1234/v1/chat/completions",
@@ -60,6 +61,7 @@ final class AIProviderTests: XCTestCase {
     func testMatchingByBaseURL() {
         XCTAssertEqual(AIProvider.matching(baseURL: "https://api.deepseek.com")?.id, "deepseek")
         XCTAssertEqual(AIProvider.matching(baseURL: "https://api.deepseek.com/")?.id, "deepseek")
+        XCTAssertEqual(AIProvider.matching(baseURL: "https://api.fireworks.ai/inference/v1")?.id, "fireworks")
         XCTAssertEqual(AIProvider.matching(baseURL: "")?.id, "anthropic", "空地址按默认 Anthropic 处理")
         XCTAssertNil(AIProvider.matching(baseURL: "https://my-relay.example.com"), "未知地址落到「自定义」")
         XCTAssertEqual(AIProvider.find("anthropic")?.format, .anthropic)

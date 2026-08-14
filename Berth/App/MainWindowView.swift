@@ -9,6 +9,7 @@ struct MainWindowView: View {
     @State private var snippetRun = SnippetRunController.shared
     @State private var theme = ThemeStore.shared
     @State private var onboarding = OnboardingController.shared
+    @State private var windowWidth: CGFloat = 0
     @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @Environment(\.modelContext) private var modelContext
 
@@ -21,7 +22,7 @@ struct MainWindowView: View {
                 SidebarView()
                     .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
             } detail: {
-                TerminalTabsView()
+                TerminalTabsView(windowWidth: windowWidth)
             }
 
             if quickConnect.isPresented {
@@ -48,6 +49,9 @@ struct MainWindowView: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
             }
         }
+        .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+        } action: { windowWidth = $0 }
         .tint(theme.current.accentColor)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: quickConnect.isPresented)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: commandPalette.isPresented)

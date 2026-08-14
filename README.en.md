@@ -18,7 +18,7 @@ macOS 15+ · Universal · Developer ID signed & notarized
 
 ![Berth dashboard](site/public/assets/shots/dashboard.png)
 
-**AI assistant that operates the server.** ⌘⇧A opens a chat panel — ask "how much disk is left?" and the AI runs commands on the current SSH session, reads the output, and answers, with per-command approval by default. The AI knows which directory your terminal is in: exact with shell integration enabled, and zero-config probing when it isn't — "check the logs in this directory" just works. Select an error in the terminal and press ⌘⌥A to ask about it. 22 providers work out of the box: Anthropic, OpenAI, DeepSeek, Kimi, Zhipu, Qwen, Gemini, Grok and more, aggregators like OpenRouter and Together, plus local models via Ollama and LM Studio (no key needed). The API key lives in the Keychain only.
+**AI assistant that operates the server.** ⌘⇧A opens a chat panel — ask "how much disk is left?" and the AI runs commands on the current SSH session, reads the output, and answers, with per-command approval by default. The AI knows which directory your terminal is in: exact with shell integration enabled, and zero-config probing when it isn't — "check the logs in this directory" just works. Select an error in the terminal and press ⌘⌥A to ask about it. 23 providers work out of the box: Anthropic, OpenAI, DeepSeek, Kimi, Zhipu, Qwen, Gemini, Grok, Fireworks AI and more, aggregators like OpenRouter and Together, plus local models via Ollama and LM Studio (no key needed). The API key lives in the Keychain only.
 
 **Connection reuse & infinite splits.** ⌘T tabs and ⌘D splits share one SSH channel — no second handshake. Nest splits without limit; `exit` collapses the pane.
 

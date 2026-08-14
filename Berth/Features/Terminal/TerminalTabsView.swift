@@ -3,11 +3,10 @@ import SwiftUI
 
 /// 右侧终端区:标签条 + 当前会话终端 + 断线横幅。
 struct TerminalTabsView: View {
+    /// 主窗口实测宽度:用于把标签区铺到右侧操作组前,不随侧栏显隐抖动。
+    let windowWidth: CGFloat
     @Environment(SessionManager.self) private var sessionManager
     @Environment(\.openWindow) private var openWindow
-    /// 终端区实测宽度:标题栏行(chips+按钮)按它定宽,才能让标签区铺满整个标题栏
-    /// (toolbar 的分段布局不给 navigation 项撑满的机会,只能显式给宽)
-    @State private var contentWidth: CGFloat = 0
     /// chip 拖拽重排状态(AppKit 事件层驱动):dragOffset 是拖拽中 chip 的视觉位移,
     /// dragSwapShift 累计交换补偿 —— 交换后 chip 的基准位置移动了,要从鼠标 ΔX 里扣掉
     @State private var draggingChip: UUID?
@@ -91,23 +90,25 @@ struct TerminalTabsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ThemeStore.shared.current.chromeBackground)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-            proxy.size.width
-        } action: { width in
-            contentWidth = width
-        }
-        // 顶部统一一行:标签 chips 靠左伸展 | 面板按钮组钉右(会话信息胶囊移入底部状态栏,
-        // 给标签让位)。toolbar 的分段布局不让单个 item 撑满,所以按终端区实测宽度显式定宽,
-        // 行内用 Spacer 自己排布。
+        // automatic 不会像 navigation placement 那样随侧栏一起消失。macOS 26
+        // 用原生 ToolbarSpacer 把操作组真正锚到右边缘;旧系统保留分项兼容布局。
         .toolbar {
             if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .navigation) {
-                    if !sessionManager.tabs.isEmpty { toolbarRow }
+                ToolbarItem(placement: .automatic) {
+                    if !sessionManager.tabs.isEmpty { toolbarTabs }
+                }
+                .sharedBackgroundVisibility(.hidden)
+                ToolbarSpacer(.flexible)
+                ToolbarItem(placement: .automatic) {
+                    if !sessionManager.tabs.isEmpty { panelButtons }
                 }
                 .sharedBackgroundVisibility(.hidden)
             } else {
-                ToolbarItem(placement: .navigation) {
-                    if !sessionManager.tabs.isEmpty { toolbarRow }
+                ToolbarItem(placement: .automatic) {
+                    if !sessionManager.tabs.isEmpty { toolbarTabs }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    if !sessionManager.tabs.isEmpty { panelButtons }
                 }
             }
         }
@@ -155,15 +156,12 @@ struct TerminalTabsView: View {
         }
     }
 
-    /// 标题栏整行:chips 靠左伸展占满剩余宽度,面板按钮组钉右。宽度取终端区实测值,
-    /// 留出 navigation 项自身的左右边距
-    private var toolbarRow: some View {
-        HStack(spacing: 8) {
-            tabChips
-            Spacer(minLength: 8)
-            panelButtons
-        }
-        .frame(width: max(contentWidth - 28, 0))
+    /// 从系统侧栏按钮之后使用可用空间,多标签在其中横向滚动。
+    private var toolbarTabs: some View {
+        tabChips
+            // 为远程会话完整的 6 个操作按钮预留容量;剩余空间由 ToolbarSpacer
+            // 吸收,所以本地 Shell 的较短按钮组仍会贴紧窗口右端。
+            .frame(width: max(windowWidth - 500, 220), alignment: .leading)
     }
 
     /// 标签 chips(标题栏左侧):每个标签一枚 chip(含嵌套分屏);两端渐隐,选中自动滚入;

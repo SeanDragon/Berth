@@ -18,7 +18,7 @@ macOS 15+ · Universal · Developer ID 签名与公证
 
 ![Berth 仪表盘](site/public/assets/shots/dashboard.png)
 
-**AI 助手,直接操作服务器。** ⌘⇧A 打开对话面板,说一句「看看磁盘还剩多少」,AI 在当前 SSH 会话上执行命令、读输出、给结论——命令默认逐条确认。AI 知道你终端所在的目录:启用命令集成精确感知,未启用也能零配置自动探测,「看看这个目录下的日志」直接就能干活。终端里选中报错按 ⌘⌥A 直接问 AI。开箱内置 22 家供应商:Anthropic、OpenAI、DeepSeek、Kimi、智谱、通义、Gemini、Grok 等官方厂商,OpenRouter、Together 等聚合中转,以及 Ollama、LM Studio 本地模型(免 Key)。API Key 只进 Keychain。
+**AI 助手,直接操作服务器。** ⌘⇧A 打开对话面板,说一句「看看磁盘还剩多少」,AI 在当前 SSH 会话上执行命令、读输出、给结论——命令默认逐条确认。AI 知道你终端所在的目录:启用命令集成精确感知,未启用也能零配置自动探测,「看看这个目录下的日志」直接就能干活。终端里选中报错按 ⌘⌥A 直接问 AI。开箱内置 23 家供应商:Anthropic、OpenAI、DeepSeek、Kimi、智谱、通义、Gemini、Grok、Fireworks AI 等官方厂商,OpenRouter、Together 等聚合中转,以及 Ollama、LM Studio 本地模型(免 Key)。API Key 只进 Keychain。
 
 **连接复用与无限分屏。** ⌘T 新标签、⌘D 分屏共享同一条 SSH 通道,不再重新握手。分屏可无限嵌套,`exit` 即收起。
 

@@ -8,7 +8,7 @@ import NIOCore
 @Observable
 final class SFTPBrowser {
 
-    struct Entry: Identifiable {
+    struct Entry: Identifiable, Sendable {
         let id = UUID()
         let name: String
         let isDirectory: Bool
@@ -18,6 +18,27 @@ final class SFTPBrowser {
         var permissions: UInt32 = 0
         /// 权限低 9 位(rwxrwxrwx)
         var mode: UInt32 { permissions & 0o777 }
+    }
+
+    /// 目录下载扫描时使用的轻量条目,与 Citadel 类型解耦,便于覆盖递归与符号链接边界。
+    struct DownloadTreeEntry: Equatable, Sendable {
+        enum Kind: Equatable, Sendable { case directory, file, symlink }
+        let name: String
+        let kind: Kind
+        let size: UInt64
+    }
+
+    struct DownloadTreeFile: Equatable, Sendable {
+        let remotePath: String
+        let relativeComponents: [String]
+        let size: UInt64
+    }
+
+    struct DirectoryDownloadPlan: Equatable, Sendable {
+        var directories: [[String]] = []
+        var files: [DownloadTreeFile] = []
+        var totalBytes: UInt64 = 0
+        var skippedSymlinks = 0
     }
 
     enum State: Equatable {
@@ -157,28 +178,226 @@ final class SFTPBrowser {
     private static let chunkSize = 256 * 1024
 
     func download(_ entry: Entry, to localURL: URL) async {
-        guard let sftp, !entry.isDirectory else { return }
-        transfer = String(localized: "下载 \(entry.name)…")
-        transferProgress = entry.size > 0 ? 0 : nil
-        defer { transfer = nil; transferProgress = nil }
         do {
-            let file = try await sftp.openFile(filePath: join(path, entry.name), flags: .read)
-            defer { Task { try? await file.close() } }
-            FileManager.default.createFile(atPath: localURL.path, contents: nil)
-            let handle = try FileHandle(forWritingTo: localURL)
-            defer { try? handle.close() }
-            var offset: UInt64 = 0
-            while true {
-                let buffer = try await file.read(from: offset, length: UInt32(Self.chunkSize))
-                let count = buffer.readableBytes
-                if count == 0 { break }
-                try handle.write(contentsOf: Data(buffer.readableBytesView))
-                offset += UInt64(count)
-                if entry.size > 0 { transferProgress = min(1, Double(offset) / Double(entry.size)) }
-                if count < Self.chunkSize { break }
-            }
+            try await performDownload(
+                entry,
+                remoteDirectory: path,
+                to: localURL,
+                externalProgress: nil
+            )
         } catch {
             state = .failed(friendly(error))
+        }
+    }
+
+    /// Finder 拖出下载使用。拖拽开始时冻结 remoteDirectory,避免传输过程中切换目录后
+    /// 同名文件被解析到新的当前位置。错误必须继续抛给 NSItemProvider,让 Finder 显示失败。
+    func downloadForDrag(
+        _ entry: Entry,
+        remoteDirectory: String,
+        to localURL: URL,
+        progress: Progress
+    ) async throws {
+        try await performDownload(
+            entry,
+            remoteDirectory: remoteDirectory,
+            to: localURL,
+            externalProgress: progress
+        )
+    }
+
+    private func performDownload(
+        _ entry: Entry,
+        remoteDirectory: String,
+        to localURL: URL,
+        externalProgress: Progress?
+    ) async throws {
+        guard let sftp else { throw TransferError.sftpUnavailable }
+        defer { transfer = nil; transferProgress = nil }
+
+        let remotePath = join(remoteDirectory, entry.name)
+        if entry.isDirectory {
+            try await performDirectoryDownload(
+                name: entry.name,
+                remotePath: remotePath,
+                localURL: localURL,
+                sftp: sftp,
+                externalProgress: externalProgress
+            )
+        } else {
+            transfer = String(localized: "下载 \(entry.name)…")
+            transferProgress = entry.size > 0 ? 0 : nil
+            externalProgress?.totalUnitCount = entry.size > 0 ? Int64(clamping: entry.size) : 1
+            _ = try await copyRemoteFile(
+                remotePath: remotePath,
+                localURL: localURL,
+                sftp: sftp
+            ) { copied in
+                if entry.size > 0 {
+                    transferProgress = min(1, Double(copied) / Double(entry.size))
+                    externalProgress?.completedUnitCount = min(
+                        externalProgress?.totalUnitCount ?? 0,
+                        Int64(clamping: copied)
+                    )
+                }
+            }
+            if entry.size == 0 { externalProgress?.completedUnitCount = 1 }
+        }
+    }
+
+    private func performDirectoryDownload(
+        name: String,
+        remotePath: String,
+        localURL: URL,
+        sftp: SFTPClient,
+        externalProgress: Progress?
+    ) async throws {
+        transfer = String(localized: "扫描 \(name)…")
+        transferProgress = nil
+        let plan = try await Self.makeDirectoryDownloadPlan(remoteRoot: remotePath) { path in
+            let names = try await sftp.listDirectory(atPath: path)
+            return names.flatMap(\.components).compactMap { component in
+                guard component.filename != ".", component.filename != ".." else { return nil }
+                let kind: DownloadTreeEntry.Kind = switch fileType(component) {
+                case .directory: .directory
+                case .symlink: .symlink
+                case .file: .file
+                }
+                return DownloadTreeEntry(
+                    name: component.filename,
+                    kind: kind,
+                    size: component.attributes.size ?? 0
+                )
+            }
+        }
+
+        try Task.checkCancellation()
+        let totalUnits = plan.totalBytes > 0 ? Int64(clamping: plan.totalBytes) : 1
+        externalProgress?.totalUnitCount = totalUnits
+        externalProgress?.completedUnitCount = 0
+        transfer = plan.skippedSymlinks > 0
+            ? String(localized: "下载 \(name)…(跳过 \(plan.skippedSymlinks) 个符号链接)")
+            : String(localized: "下载 \(name)…")
+        transferProgress = plan.totalBytes > 0 ? 0 : nil
+
+        for components in plan.directories {
+            try Task.checkCancellation()
+            try FileManager.default.createDirectory(
+                at: localURL.appendingPathComponents(components, directory: true),
+                withIntermediateDirectories: true
+            )
+        }
+
+        var completedBytes: UInt64 = 0
+        for item in plan.files {
+            try Task.checkCancellation()
+            let base = completedBytes
+            let copied = try await copyRemoteFile(
+                remotePath: item.remotePath,
+                localURL: localURL.appendingPathComponents(item.relativeComponents, directory: false),
+                sftp: sftp
+            ) { fileBytes in
+                let aggregate = Self.saturatingAdd(base, fileBytes)
+                if plan.totalBytes > 0 {
+                    transferProgress = min(1, Double(aggregate) / Double(plan.totalBytes))
+                    externalProgress?.completedUnitCount = min(totalUnits, Int64(clamping: aggregate))
+                }
+            }
+            completedBytes = Self.saturatingAdd(completedBytes, copied)
+        }
+
+        transferProgress = 1
+        externalProgress?.completedUnitCount = totalUnits
+    }
+
+    @discardableResult
+    private func copyRemoteFile(
+        remotePath: String,
+        localURL: URL,
+        sftp: SFTPClient,
+        onProgress: (_ copied: UInt64) -> Void
+    ) async throws -> UInt64 {
+        let file = try await sftp.openFile(filePath: remotePath, flags: .read)
+        defer { Task { try? await file.close() } }
+        guard FileManager.default.createFile(atPath: localURL.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown)
+        }
+        let handle = try FileHandle(forWritingTo: localURL)
+        defer { try? handle.close() }
+        return try await Self.copyDownloadChunks(
+            chunkSize: Self.chunkSize,
+            read: { offset, length in
+                let buffer = try await file.read(from: offset, length: length)
+                return Data(buffer.readableBytesView)
+            },
+            write: { data in
+                try handle.write(contentsOf: data)
+            },
+            onProgress: onProgress
+        )
+    }
+
+    /// 先扫描目录树以获得稳定的本地相对路径和总字节。符号链接不跟随,避免循环与
+    /// 把目录树之外的目标意外复制进来。
+    static func makeDirectoryDownloadPlan(
+        remoteRoot: String,
+        list: (_ remotePath: String) async throws -> [DownloadTreeEntry]
+    ) async throws -> DirectoryDownloadPlan {
+        var plan = DirectoryDownloadPlan()
+
+        func scan(remotePath: String, relativeComponents: [String]) async throws {
+            try Task.checkCancellation()
+            plan.directories.append(relativeComponents)
+            for entry in try await list(remotePath) {
+                try Task.checkCancellation()
+                guard entry.name != ".", entry.name != ".." else { continue }
+                let childRemotePath = remotePath == "/"
+                    ? "/\(entry.name)"
+                    : "\(remotePath)/\(entry.name)"
+                let childComponents = relativeComponents + [entry.name]
+                switch entry.kind {
+                case .directory:
+                    try await scan(remotePath: childRemotePath, relativeComponents: childComponents)
+                case .file:
+                    plan.files.append(DownloadTreeFile(
+                        remotePath: childRemotePath,
+                        relativeComponents: childComponents,
+                        size: entry.size
+                    ))
+                    plan.totalBytes = saturatingAdd(plan.totalBytes, entry.size)
+                case .symlink:
+                    plan.skippedSymlinks += 1
+                }
+            }
+        }
+
+        try await scan(remotePath: remoteRoot, relativeComponents: [])
+        return plan
+    }
+
+    private static func saturatingAdd(_ lhs: UInt64, _ rhs: UInt64) -> UInt64 {
+        let (sum, overflow) = lhs.addingReportingOverflow(rhs)
+        return overflow ? .max : sum
+    }
+
+    /// 持续读取直到服务端明确返回 0 字节。SFTP 单次 read 可以合法地返回少于请求长度的
+    /// 数据(常见上限约几十 KB),短读不代表 EOF;把短读当 EOF 会让大文件只下载首个包。
+    @discardableResult
+    static func copyDownloadChunks(
+        chunkSize: Int,
+        read: (_ offset: UInt64, _ length: UInt32) async throws -> Data,
+        write: (_ data: Data) throws -> Void,
+        onProgress: (_ copied: UInt64) -> Void = { _ in }
+    ) async throws -> UInt64 {
+        precondition(chunkSize > 0 && chunkSize <= Int(UInt32.max))
+        var offset: UInt64 = 0
+        while true {
+            try Task.checkCancellation()
+            let data = try await read(offset, UInt32(chunkSize))
+            guard !data.isEmpty else { return offset }
+            try write(data)
+            offset += UInt64(data.count)
+            onProgress(offset)
         }
     }
 
@@ -397,6 +616,16 @@ final class SFTPBrowser {
 
     private enum FileType { case directory, symlink, file }
 
+    private enum TransferError: LocalizedError {
+        case sftpUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .sftpUnavailable: String(localized: "SFTP 连接不可用")
+            }
+        }
+    }
+
     private func fileType(_ component: SFTPPathComponent) -> FileType {
         if let permissions = component.attributes.permissions {
             switch permissions & 0o170000 {
@@ -424,5 +653,17 @@ final class SFTPBrowser {
             return String(localized: "文件或目录不存在")
         }
         return String(localized: "SFTP 操作失败:\(raw)")
+    }
+}
+
+private extension URL {
+    func appendingPathComponents(_ components: [String], directory: Bool) -> URL {
+        components.enumerated().reduce(self) { url, pair in
+            let (index, component) = pair
+            return url.appendingPathComponent(
+                component,
+                isDirectory: index < components.count - 1 || directory
+            )
+        }
     }
 }

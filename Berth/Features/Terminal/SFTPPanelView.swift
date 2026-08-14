@@ -1,7 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// 终端右侧 SFTP 文件面板:路径栏 + 文件列表 + 上传/新建 + 拖入上传。
+/// 终端右侧 SFTP 文件面板:路径栏 + 文件列表 + 上传/新建 + 拖入上传、拖出下载。
 struct SFTPPanelView: View {
     let session: TerminalSession
     let onClose: () -> Void
@@ -225,6 +225,14 @@ struct SFTPPanelView: View {
     }
 
     private func row(_ entry: SFTPBrowser.Entry) -> some View {
+        rowContent(entry)
+            .onDrag { remoteFileProvider(for: entry) }
+            .help(entry.isDirectory
+                ? String(localized: "拖到 Finder 下载文件夹")
+                : String(localized: "拖到 Finder 下载"))
+    }
+
+    private func rowContent(_ entry: SFTPBrowser.Entry) -> some View {
         HStack(spacing: 8) {
             Image(systemName: entry.isDirectory ? "folder.fill" : (entry.isSymlink ? "arrow.up.right" : "doc"))
                 .font(.system(size: 13))
@@ -362,6 +370,71 @@ struct SFTPPanelView: View {
             }
         }
         return true
+    }
+
+    /// Finder 会在用户真正放下文件后请求这个延迟表示。先下载到独立临时目录,
+    /// 交给 NSItemProvider 复制,并在宽限期后清理临时副本。
+    private func remoteFileProvider(for entry: SFTPBrowser.Entry) -> NSItemProvider {
+        let provider = NSItemProvider()
+
+        let pathExtension = (entry.name as NSString).pathExtension
+        let inferredType = entry.isDirectory || pathExtension.isEmpty
+            ? nil
+            : UTType(filenameExtension: pathExtension)
+        let contentType = entry.isDirectory ? UTType.folder : (inferredType ?? .data)
+        // Finder 会按 UTI 自动补首选扩展名;这里给基名可避免 foo.json.json。
+        // 未知扩展名会回落 public.data,它不会自动补扩展,因此仍保留完整名称。
+        provider.suggestedName = entry.isDirectory || inferredType?.preferredFilenameExtension == nil
+            ? entry.name
+            : (entry.name as NSString).deletingPathExtension
+        let remoteDirectory = browser?.path ?? "/"
+        let dragBrowser = browser
+
+        provider.registerFileRepresentation(
+            forTypeIdentifier: contentType.identifier,
+            fileOptions: [],
+            visibility: .all
+        ) { completion in
+            let total = !entry.isDirectory && entry.size > 0 ? Int64(clamping: entry.size) : 1
+            let progress = Progress(totalUnitCount: total)
+            let task = Task { @MainActor in
+                let temporaryDirectory = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("Berth-Drag-\(UUID().uuidString)", isDirectory: true)
+                let localURL = temporaryDirectory.appendingPathComponent(
+                    entry.name,
+                    isDirectory: entry.isDirectory
+                )
+
+                do {
+                    guard let dragBrowser else {
+                        throw CocoaError(.fileNoSuchFile)
+                    }
+                    try FileManager.default.createDirectory(
+                        at: temporaryDirectory,
+                        withIntermediateDirectories: true
+                    )
+                    try await dragBrowser.downloadForDrag(
+                        entry,
+                        remoteDirectory: remoteDirectory,
+                        to: localURL,
+                        progress: progress
+                    )
+                    completion(localURL, false, nil)
+                    // 文件表示的接收方可能在 completion 返回后才开始复制。给 Finder 足够的
+                    // 取用时间,再清理由 Berth 创建的临时副本;系统临时目录也会兜底清理。
+                    Task.detached {
+                        try? await Task.sleep(for: .seconds(30 * 60))
+                        try? FileManager.default.removeItem(at: temporaryDirectory)
+                    }
+                } catch {
+                    completion(nil, false, error)
+                    try? FileManager.default.removeItem(at: temporaryDirectory)
+                }
+            }
+            progress.cancellationHandler = { task.cancel() }
+            return progress
+        }
+        return provider
     }
 
     private func sizeText(_ bytes: UInt64) -> String {

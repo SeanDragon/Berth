@@ -81,6 +81,18 @@ struct AIProvider: Identifiable, Hashable {
             docsURL: "https://console.groq.com/docs/models"
         ),
         AIProvider(
+            id: "fireworks", name: "Fireworks AI",
+            baseURL: "https://api.fireworks.ai/inference/v1", format: .openAI,
+            models: [
+                "accounts/fireworks/models/glm-5p2",
+                "accounts/fireworks/models/kimi-k2p7-code",
+                "accounts/fireworks/models/deepseek-v4-pro",
+                "accounts/fireworks/models/minimax-m3",
+                "accounts/fireworks/models/kimi-k2p6",
+            ],
+            docsURL: "https://fireworks.ai/models"
+        ),
+        AIProvider(
             id: "xai", name: "xAI (Grok)",
             baseURL: "https://api.x.ai", format: .openAI,
             models: ["grok-4.5", "grok-4.3", "grok-build-0.1"],
