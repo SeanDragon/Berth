@@ -462,7 +462,7 @@ struct SidebarView: View {
     }
 }
 
-/// 主机行(Termite 同款设计语言):图标列 + 13pt 标题 + 10pt 等宽副标题,
+/// 主机行(Termite 同款设计语言):13pt 标题 + 10pt 等宽副标题,
 /// 尾部状态点(连接态 > 可达性 > 标签色);选中 = 浮起材质,不用强调色水洗
 private struct HostRow: View {
     let host: Host
@@ -474,10 +474,7 @@ private struct HostRow: View {
     @State private var reachability = HostReachability.shared
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Finder 式图标列:固定宽度对齐成列
-            OSBadge(osName: host.osName)
-                .frame(width: 20)
+        HStack(spacing: 6) {
             VStack(alignment: .leading, spacing: 1.5) {
                 Text(PrivacyMode.shared.maskHost(in: host.label, hostname: host.hostname))
                     .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
