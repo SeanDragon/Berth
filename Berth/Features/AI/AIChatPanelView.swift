@@ -382,6 +382,7 @@ private struct AICodeBlockView: View {
     @State private var pendingConfirm = false
 
     private var theme: TerminalTheme { ThemeStore.shared.current }
+    private var terminalPayload: String { AITerminalPayload.make(from: code) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -408,7 +409,7 @@ private struct AICodeBlockView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(copied ? .green : .secondary)
-                if !AICodeBlockClassifier.looksLikeTable(code) {
+                if !AICodeBlockClassifier.looksLikeTable(code), !terminalPayload.isEmpty {
                     Button {
                         sendToTerminal()
                     } label: {
@@ -442,21 +443,21 @@ private struct AICodeBlockView: View {
             isPresented: $pendingConfirm,
             titleVisibility: .visible
         ) {
-            Button(String(localized: "发送"), role: .destructive) { session.sendText(code) }
+            Button(String(localized: "发送"), role: .destructive) { session.pasteText(terminalPayload) }
             Button(String(localized: "取消"), role: .cancel) {}
         } message: {
-            Text(BerthTerminalView.preview(code))
+            Text(BerthTerminalView.preview(terminalPayload))
         }
     }
 
     /// 多行或危险命令按粘贴保护的规矩先确认(生产主机一律确认)
     private func sendToTerminal() {
         let protectionOn = UserDefaults.standard.object(forKey: SettingsKeys.pasteProtection) as? Bool ?? true
-        let risky = BerthTerminalView.needsConfirmation(code) || session.spec.isProduction
+        let risky = BerthTerminalView.needsConfirmation(terminalPayload) || session.spec.isProduction
         if protectionOn, risky {
             pendingConfirm = true
         } else {
-            session.sendText(code)
+            session.pasteText(terminalPayload)
         }
     }
 }

@@ -195,6 +195,31 @@ final class AIMarkdownParserTests: XCTestCase {
         )
     }
 
+    func testTerminalPayloadDropsChinesePresentationComments() {
+        let code = """
+        # 在 Proxmox 宿主机上确认可用内存充足后
+        swapoff -a && swapon -a
+        """
+        XCTAssertEqual(AITerminalPayload.make(from: code), "swapoff -a && swapon -a")
+    }
+
+    func testTerminalPayloadPreservesExecutableHashesAndPlainComments() {
+        let code = """
+        # managed by Berth
+        printf '# keep this literal\\n'
+        echo done # shell comment
+        """
+        XCTAssertEqual(AITerminalPayload.make(from: code), code)
+    }
+
+    func testBracketedPasteEncoderDoesNotAddEnter() {
+        XCTAssertEqual(
+            TerminalPasteEncoder.encode("echo one\\necho two", bracketed: true),
+            "\u{1b}[200~echo one\\necho two\u{1b}[201~"
+        )
+        XCTAssertEqual(TerminalPasteEncoder.encode("echo ok", bracketed: false), "echo ok")
+    }
+
     func testMixedDocument() {
         let raw = """
         ## 结论

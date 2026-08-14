@@ -1,6 +1,14 @@
 import AppKit
 import SwiftTerm
 
+/// 统一终端粘贴编码。bracketed paste 开启时，shell 会把整段内容留在编辑缓冲区，
+/// 不会因中间换行而提前执行；用户确认内容后再自行回车。
+enum TerminalPasteEncoder {
+    static func encode(_ text: String, bracketed: Bool) -> String {
+        bracketed ? "\u{1b}[200~\(text)\u{1b}[201~" : text
+    }
+}
+
 /// 终端视图子类:粘贴保护 —— 多行粘贴或含危险命令(sudo/rm -rf/dd/mkfs 等)先弹预览确认,
 /// 防止误粘贴直接执行。可在 设置 → 安全 关闭。
 final class BerthTerminalView: SwiftTerm.TerminalView {
@@ -252,8 +260,7 @@ final class BerthTerminalView: SwiftTerm.TerminalView {
 
     /// 路径粘贴不走 super.paste(那条路只认字符串),按终端当前括号粘贴模式自己包
     private func sendAsPaste(_ text: String) {
-        let payload = getTerminal().bracketedPasteMode
-            ? "\u{1b}[200~\(text)\u{1b}[201~" : text
+        let payload = TerminalPasteEncoder.encode(text, bracketed: getTerminal().bracketedPasteMode)
         MainActor.assumeIsolated {
             if let id = focusSessionID, let session = SessionManager.shared.session(id) {
                 session.sendText(payload)

@@ -321,3 +321,29 @@ enum AICodeBlockClassifier {
         }
     }
 }
+
+/// 把 AI 代码卡片转换为适合写入终端编辑缓冲区的内容。
+///
+/// 有些远端 shell 的 locale 不是 UTF-8，中文说明注释回显时会变成乱码；这类注释对
+/// 执行没有作用，因此在发送前移除。只处理独占一行且含非 ASCII 字符的注释，避免改写
+/// 普通 ASCII 注释或命令内的 `#` 内容。
+enum AITerminalPayload {
+    static func make(from code: String) -> String {
+        var lines = code.components(separatedBy: .newlines)
+        lines.removeAll(where: isNonASCIIComment)
+
+        while lines.first?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            lines.removeFirst()
+        }
+        while lines.last?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+            lines.removeLast()
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func isNonASCIIComment(_ line: String) -> Bool {
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.hasPrefix("#") else { return false }
+        return trimmed.unicodeScalars.contains { !$0.isASCII }
+    }
+}

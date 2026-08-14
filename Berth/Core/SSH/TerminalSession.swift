@@ -364,6 +364,13 @@ final class TerminalSession: Identifiable {
         stdinWriter?.yield(.bytes(Array(text.utf8)))
     }
 
+    /// 像用户粘贴一样写入终端。支持 bracketed paste 的 shell 不会把多行内容中的
+    /// 换行当作立即执行，和 AI 代码卡片“写入、不自动回车”的承诺保持一致。
+    func pasteText(_ text: String) {
+        guard !text.isEmpty else { return }
+        sendText(TerminalPasteEncoder.encode(text, bracketed: terminalView.getTerminal().bracketedPasteMode))
+    }
+
     // MARK: - 命令位置标记(OSC 133 提示符 → ⌘↑/⌘↓ 跳转)
 
     /// 增量刷新 scroll-invariant 行号边界:上界随输出前进,下界随 scrollback 修剪上移
