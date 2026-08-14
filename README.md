@@ -1,101 +1,88 @@
-# Berth 泊
+<p align="center">
+  <img src="docs/assets/icon.svg" width="112" alt="Berth icon">
+</p>
 
-**SSH,该有 Mac 的样子。**
+<h1 align="center">Berth</h1>
 
-[English](README.en.md)
+<p align="center">
+  A native macOS SSH workspace for terminals, SFTP, port forwarding, and AI-assisted remote work.
+</p>
 
-Berth 是一款 Swift 原生的 macOS SSH 客户端——Metal 渲染终端、连接复用、无限分屏。密码与私钥只进 Keychain,任何数据不离开你的 Mac。
+<p align="center">
+  <a href="https://github.com/xinghelee/Berth/releases/latest">Download latest</a> ·
+  <a href="https://github.com/xinghelee/Berth/releases">Releases</a> ·
+  <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-![Berth 终端](site/public/assets/shots/hero-terminal.png)
+<p align="center">
+  macOS 15+ · Universal · Developer ID signed · Apple notarized
+</p>
 
-macOS 15+ · Universal · Developer ID 签名与公证
+![Berth terminal workspace with fastfetch and htop](docs/assets/shots/terminal-htop-1.8.0.png)
 
-**[⬇︎ 下载最新版](https://github.com/xinghelee/Berth/releases/latest)** · [全部版本](https://github.com/xinghelee/Berth/releases)
+## Built for remote work
 
-## 功能
+Berth is a Swift-native SSH client for macOS. It keeps the directness of a terminal while bringing connections, remote files, and contextual tools into one workspace for developers and operators.
 
-**服务器仪表盘。** ⌘0 一屏看完所有主机:CPU、内存、磁盘、交换、网络上下行、负载、运行时长,每台带一条 CPU 走势。已经开着终端的主机直接复用那条连接,其余各建一条不开 PTY 的轻量连接。后台采集从不弹窗——需要确认指纹或 MFA 的主机会在卡片上明说,你处理完它自己接上。想常驻第二块屏就撕成独立窗口。
+| Capability | What it provides |
+| --- | --- |
+| Terminal workspace | Tabs, nested split panes, search, themes, automatic reconnect, and connection reuse. |
+| Connections | Password, private-key, ssh-agent, and keyboard-interactive authentication; ssh_config import, jump hosts, and HTTP/SOCKS5 proxies. |
+| Networking | Local, remote, and dynamic SOCKS5 port forwarding for temporary debugging and private-network access. |
+| SFTP file panel | Browse, upload, download, preview, and edit through the active SSH connection; drag files in either direction and download folders recursively. |
+| Server visibility | CPU, memory, disk, network, and load in the dashboard; inspect Docker container state and logs. |
+| AI assistant | Analyze the current terminal context, propose or run commands, render Markdown including tables, and keep command approval configurable. |
 
-![Berth 仪表盘](site/public/assets/shots/dashboard.png)
+## Keyboard first
 
-**AI 助手,直接操作服务器。** ⌘⇧A 打开对话面板,说一句「看看磁盘还剩多少」,AI 在当前 SSH 会话上执行命令、读输出、给结论——命令默认逐条确认。AI 知道你终端所在的目录:启用命令集成精确感知,未启用也能零配置自动探测,「看看这个目录下的日志」直接就能干活。终端里选中报错按 ⌘⌥A 直接问 AI。开箱内置 23 家供应商:Anthropic、OpenAI、DeepSeek、Kimi、智谱、通义、Gemini、Grok、Fireworks AI 等官方厂商,OpenRouter、Together 等聚合中转,以及 Ollama、LM Studio 本地模型(免 Key)。API Key 只进 Keychain。
+Stay in the flow with ⌘K Quick Connect, ⌘T new tab, ⌘D split pane, ⌘F search, ⌘I server information, and ⌘⇧A AI Assistant. Ctrl combinations always pass through to the remote shell, preserving readline, vim, and Emacs habits.
 
-**连接复用与无限分屏。** ⌘T 新标签、⌘D 分屏共享同一条 SSH 通道,不再重新握手。分屏可无限嵌套,`exit` 即收起。
+## AI providers
 
-**跳板机与端口转发。** 链式跳板一路到底;本地 / 远程 / 动态 SOCKS5 转发,支持 HTTP 与 SOCKS5 出站代理和 ssh-agent。
+The AI panel can run commands in the active session, read their output, and continue the investigation. Berth includes presets for Anthropic, OpenAI, Fireworks AI, Gemini, DeepSeek, OpenRouter, Ollama, LM Studio, and more. Any OpenAI- or Anthropic-compatible endpoint and model can also be configured manually.
 
-**密钥与 Touch ID。** 生成、导入密钥,使用私钥前 Touch ID 验证。老格式私钥(PKCS#1 / PKCS#8,含云厂商下发的 `.pem`)直接粘贴即用,自动转换,无需 `ssh-keygen -p`。`known_hosts` 指纹确认,变更即警告。
+API keys are stored only in the macOS Keychain. When using a cloud model, only the content required for the request is sent to the provider you configured; choose providers and context in line with your organisation's security policy.
 
-**SFTP 文件面板。** 复用会话连接,拖拽上传下载。文件直接拖进终端窗口,自动上传到 shell 当前所在目录——松手前就能看到会传到哪。远端文件用本地编辑器打开,保存自动回传;chmod、书签、文本预览。
+## Security and privacy
 
-**Docker 面板。** 一眼看清远端容器:compose 项目分组、状态色点、端口映射,打开期间自动跟进变化。启动 / 停止 / 重启、查看日志;生产主机的操作先过确认。
+- Passwords, private keys, and passphrases live in the macOS Keychain—not in plaintext in the database or JSON backups.
+- known_hosts verification explicitly surfaces first connections and host-key changes.
+- Berth requires no account and does not depend on a Berth-operated cloud service for SSH connections.
+- Screenshots in this repository use in-memory data and a local test container. Host names, addresses, and accounts are fixtures; real addresses are redacted.
 
-**断线不慌。** 指数退避自动重连,重连后回到原工作目录(OSC 7);命令退出码直接标在终端里(OSC 133)。
+## Install
 
-**生产环境警戒。** 按主机警戒配色,一眼分清测试与生产。广播输入(⌘⌥B)同时操作多台;Snippets 片段库带 `{{变量}}`。
+With Homebrew:
 
-**ssh_config 原生集成。** 导入现有 `~/.ssh/config` 并监听变更实时同步。粘贴任意 `ssh user@host -p 2222` 命令即可直接连接。
-
-**iCloud 同步。** 主机与设置镜像到你的 iCloud 私有数据库;机密经 iCloud 钥匙串端到端加密同步。没有账号,没有我们的服务器。
-
-**二十套内置主题。** Nord、Dracula、Catppuccin、Solarized 尽数内置,另有四套 Berth 原创:松烟墨、玉版宣、夜泊琥珀、祖母绿圣殿。
-
-**键盘优先。** ⌘K 快速连接、⌘P 命令面板、⌘D 分屏、⌘F 搜索、⌘I 服务器信息、⌘⇧A AI 助手。Ctrl 组合键全部透传给 shell,你的 Emacs / readline 习惯原样保留。
-
-iOS 伴侣应用(`BerthiOS`)共享同一套核心:主机列表、完整主机编辑器、带按键条的 SwiftTerm 终端、密钥管理、Snippets 与主题。
-
-## 安全
-
-两条底线,写进架构:
-
-- **机密只进 Keychain。** 密码、passphrase、私钥存 macOS Keychain,任何情况不落盘明文。JSON 备份只含主机结构,不含机密。
-- **数据全在本地。** 没有账号,没有我们的云端。主机列表在你的 Mac 上,与 `ssh_config` 双向同步;iCloud 同步只经过你自己的私有数据库。
-
-## 安装
-
-Homebrew:
-
-```sh
+~~~sh
 brew install --cask xinghelee/tap/berth
-```
+~~~
 
-或从 [Releases](https://github.com/xinghelee/Berth/releases/latest) 下载最新的 `Berth-x.y.z.dmg`,打开后把 Berth 拖入「应用程序」。DMG 经 Developer ID 签名并通过 Apple 公证,首次启动无需任何绕过步骤。
+Or download Berth-&lt;version&gt;.dmg from [GitHub Releases](https://github.com/xinghelee/Berth/releases/latest), then drag Berth.app to Applications. Release builds are Developer ID signed and Apple notarized.
 
-## 从源码构建
+## Build from source
 
-依赖:Xcode 16+ 及 Metal 工具链(缺失时 `xcodebuild -downloadComponent metalToolchain` 补装)、[XcodeGen](https://github.com/yonaskolb/XcodeGen)。
+Requirements: macOS 15+, Xcode 16+ with the Metal toolchain, and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
-```bash
-xcodegen generate    # Berth.xcodeproj 由工程文件生成,不入库
-xcodebuild -project Berth.xcodeproj -scheme Berth build        # macOS 应用
-xcodebuild -project Berth.xcodeproj -scheme BerthiOS build \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' # iOS 应用
-```
-
-运行单元测试(解析器、Keychain、known_hosts、密钥格式转换、Docker 状态等,共 113 项):
-
-```bash
+~~~sh
+xcodegen generate
+xcodebuild -project Berth.xcodeproj -scheme Berth -configuration Debug build
 xcodebuild -project Berth.xcodeproj -scheme Berth test
-```
+~~~
 
-本地测试用的一次性 sshd(密码 `dev` / `berth-spike`,支持密钥认证,监听 `127.0.0.1:2222`):
+Berth.xcodeproj is generated by XcodeGen and is not checked in. If the Metal toolchain is missing:
 
-```bash
-./docker/test-sshd/up.sh
-docker rm -f berth-test-sshd   # 停止
-```
+~~~sh
+xcodebuild -downloadComponent metalToolchain
+~~~
 
-## 技术栈
+## Stack
 
-- **SwiftUI**(AppKit 桥接终端视图)+ **SwiftData** 持久化
-- **[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)** 终端模拟,启用 Metal GPU 渲染后端
-- **[Citadel](https://github.com/orlandos-nl/Citadel)** SSH 库,vendor 在 `vendor/` 并打补丁——核心是 `rsa-sha2-512` 签名(RFC 8332),让 RSA 密钥能连 OpenSSH 8.8+;详见 `vendor/PATCHES.md`
-- **XcodeGen** 生成工程;以公证 DMG 分发
+- Swift + SwiftUI with an AppKit-bridged terminal view
+- [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm) terminal emulation with Metal rendering
+- [Citadel](https://github.com/orlandos-nl/Citadel) and vendored swift-nio-ssh for SSH; see [vendor/PATCHES.md](vendor/PATCHES.md) for the RSA compatibility patch
+- SwiftData, XcodeGen, and a notarized DMG release pipeline
 
-## 许可证
+## License
 
-本项目以 [GPL-3.0](LICENSE) 许可证开源。vendor 依赖各自保留原许可证(Citadel/SwiftTerm 为 MIT,swift-nio-ssh 为 Apache-2.0)。
-
----
-
-*Berth · 系好每一条连接*
+Berth is licensed under [GPL-3.0](LICENSE). Third-party dependencies retain their respective licenses in vendor/.

@@ -21,8 +21,6 @@ enum DemoScene {
         let outDir = URL(fileURLWithPath: dir, isDirectory: true)
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
-        ThemeStore.shared.select(id: "nord")
-
         // 侧栏演示主机(除 atlas-01 外均为摆设,不发起连接)
         let context = ModelContext(container)
         let real = Host(label: "atlas-01", hostname: hostAddr, port: port, username: user, tagColor: .blue)
@@ -58,27 +56,31 @@ enum DemoScene {
         if let side = manager.selected, side !== session {
             if await waitForConnected(side, timeout: 15) {
                 try? await Task.sleep(for: .milliseconds(600))
-                side.sendText("htop\n")
+                side.sendText("export PS1='docs-demo:~$ '; clear; htop\n")
             }
         }
         try? await Task.sleep(for: .milliseconds(600))
-        session.sendText("clear && fastfetch\n")
+        session.sendText("export PS1='docs-demo:~$ '; clear; fastfetch --structure OS:Kernel:Uptime:Packages:Shell:Terminal:CPU:Memory:Swap:Disk\n")
         try? await Task.sleep(for: .seconds(2))
 
         // 外部遥控:窗口号写盘供 screencapture -l 使用;cmd.txt 驱动场景切换
         if let win = NSApp.windows.first(where: { $0.isVisible && $0.frame.width > 500 }) {
+            // 文档图固定为 16:10，避免不同显示器/上次窗口状态导致比例漂移。
+            win.setContentSize(NSSize(width: 1_728, height: 1_080))
+            win.center()
+            try? await Task.sleep(for: .seconds(1))
             try? String(win.windowNumber).write(to: outDir.appendingPathComponent("windowid.txt"),
                                                 atomically: true, encoding: .utf8)
         }
         try? "ready".write(to: outDir.appendingPathComponent("READY"), atomically: true, encoding: .utf8)
-        startCommandLoop(outDir: outDir, manager: manager)
+        startCommandLoop(outDir: outDir, manager: manager, primarySession: session)
 
         // 密码只为本场景服务,不留在真实 Keychain
         KeychainStore.deleteSecrets(for: real.id)
     }
 
-    /// 轮询 cmd.txt:sftp-on/sftp-off/inspector-on/inspector-off/palette/snap <名字>
-    private static func startCommandLoop(outDir: URL, manager: SessionManager) {
+    /// 轮询 cmd.txt:files-on/sftp-on/sftp-off/inspector-on/inspector-off/palette/snap <名字>
+    private static func startCommandLoop(outDir: URL, manager: SessionManager, primarySession: TerminalSession) {
         let cmdFile = outDir.appendingPathComponent("cmd.txt")
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
             Task { @MainActor in
@@ -86,6 +88,16 @@ enum DemoScene {
                 try? FileManager.default.removeItem(at: cmdFile)
                 let cmd = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                 switch cmd {
+                case "files-on":
+                    // 文件面板截图不保留 htop,避免窄屏下终端内容被截断。
+                    for session in manager.sessions { session.sendText("\u{03}") }
+                    try? await Task.sleep(for: .milliseconds(300))
+                    let command = "clear; printf '\\033[1;36mSFTP workspace\\033[0m\\n\\nBrowse, upload, and download files from the active SSH connection.\\n'\n"
+                    primarySession.sendText(command)
+                    if let side = manager.selected, side !== primarySession {
+                        side.sendText(command)
+                    }
+                    manager.isSFTPVisible = true
                 case "sftp-on": manager.isSFTPVisible = true
                 case "sftp-off": manager.isSFTPVisible = false
                 case "inspector-on": manager.isInspectorVisible = true
