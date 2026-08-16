@@ -45,4 +45,6 @@ enum SettingsKeys {
     static let dashboardInterval = "dashboard.interval"
     /// 仪表盘排序方式(DashboardSort.rawValue)
     static let dashboardSort = "dashboard.sort"
+    /// 仪表盘卡片显示比例(1 / 1.25 / 1.5),适合高分辨率大屏常驻查看
+    static let dashboardCardScale = "dashboard.cardScale"
 }

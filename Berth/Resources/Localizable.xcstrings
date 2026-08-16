@@ -1815,6 +1815,26 @@
         }
       }
     },
+    "仪表盘显示比例": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dashboard display scale"
+          }
+        }
+      }
+    },
+    "显示比例": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Display Scale"
+          }
+        }
+      }
+    },
     "会修改你的 ~/.ssh/config 文件(自动备份为 config.berth-backup),系统 ssh 也会随之生效。": {
       "localizations": {
         "en": {
@@ -1981,6 +2001,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Save the host first to add port forwards."
+          }
+        }
+      }
+    },
+    "保存主机失败:%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn’t save host: %@"
           }
         }
       }
@@ -3082,6 +3112,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Backups are JSON with hosts/groups/forwards/proxy structure only; passwords, passphrases and private keys stay in Keychain and are never exported."
+          }
+        }
+      }
+    },
+    "备份为 JSON,只含托管主机/分组/转发/代理结构;密码、passphrase、私钥在 Keychain,不会导出。来自 ~/.ssh/config 的只读主机由本机配置文件管理,不会包含在备份中。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backups are JSON with managed hosts, groups, forwards, and proxy structure only; passwords, passphrases, and private keys stay in Keychain and are never exported. Read-only hosts from ~/.ssh/config are managed by that local config file and are not included."
           }
         }
       }

@@ -34,12 +34,20 @@ struct DashboardView: View {
     @AppStorage(SettingsKeys.demoMode) private var demoMode = false
     @AppStorage(SettingsKeys.dashboardInterval) private var interval = 5.0
     @AppStorage(SettingsKeys.dashboardSort) private var sortRaw = DashboardSort.name.rawValue
+    @AppStorage(SettingsKeys.dashboardCardScale) private var cardScale = 1.0
 
     @State private var monitor = ServerMonitor.shared
     @State private var theme = ThemeStore.shared
     @State private var searchText = ""
 
     private var sort: DashboardSort { DashboardSort(rawValue: sortRaw) ?? .name }
+    /// 用户偏好只允许预设档位;旧版或手改 defaults 的异常值也不能把布局撑坏。
+    private var effectiveCardScale: CGFloat {
+        switch cardScale {
+        case 1.25, 1.5: return cardScale
+        default: return 1
+        }
+    }
 
     /// 托管主机 + ssh_config 镜像;演示模式换内置示例(与侧栏同源)
     private var allHosts: [Host] {
@@ -135,6 +143,20 @@ struct DashboardView: View {
                 monitor.refreshAll()
             }
 
+            Menu {
+                Text("显示比例")
+                Button { cardScale = 1 } label: { scaleMenuLabel("100%", value: 1) }
+                Button { cardScale = 1.25 } label: { scaleMenuLabel("125%", value: 1.25) }
+                Button { cardScale = 1.5 } label: { scaleMenuLabel("150%", value: 1.5) }
+            } label: {
+                Image(systemName: "text.magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .frame(width: 24, height: 22)
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .help(String(localized: "仪表盘显示比例"))
+
             if isEmbedded {
                 // 想扔到第二块屏常驻:撕成独立窗口(两边共用同一个采集引擎,不会重复连服务器)
                 PanelIconButton(symbol: "macwindow.on.rectangle", help: String(localized: "在新窗口打开")) {
@@ -145,6 +167,15 @@ struct DashboardView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 9)
+    }
+
+    @ViewBuilder
+    private func scaleMenuLabel(_ title: String, value: Double) -> some View {
+        if cardScale == value {
+            Label(title, systemImage: "checkmark")
+        } else {
+            Text(title)
+        }
     }
 
     private var summary: some View {
@@ -184,20 +215,25 @@ struct DashboardView: View {
         ScrollView {
             LazyVGrid(
                 // 同一行里卡片高度不一(离线卡片矮),顶对齐才不会一高一低错开
-                columns: [GridItem(.adaptive(minimum: 290, maximum: 460), spacing: 12, alignment: .top)],
-                spacing: 12
+                columns: [GridItem(
+                    .adaptive(minimum: 290 * effectiveCardScale, maximum: 460 * effectiveCardScale),
+                    spacing: 12 * effectiveCardScale,
+                    alignment: .top
+                )],
+                spacing: 12 * effectiveCardScale
             ) {
                 ForEach(visibleStates) { state in
                     ServerCardView(
                         state: state,
                         theme: theme.current,
+                        displayScale: effectiveCardScale,
                         onConnect: { connect(state.id) },
                         onAuthorize: { Task { await monitor.authorizeKeyUse() } }
                     )
                     .contextMenu { cardMenu(state) }
                 }
             }
-            .padding(14)
+            .padding(14 * effectiveCardScale)
         }
     }
 

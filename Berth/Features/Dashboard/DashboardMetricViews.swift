@@ -64,23 +64,24 @@ struct MetricBar: View {
     let label: String
     let fraction: Double?
     let detail: String
+    var scale: CGFloat = 1
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: 3 * scale) {
+            HStack(spacing: 4 * scale) {
                 Text(label)
-                    .font(.system(size: 10.5))
+                    .font(.system(size: 10.5 * scale))
                     .foregroundStyle(.secondary)
-                Spacer(minLength: 4)
+                Spacer(minLength: 4 * scale)
                 Text(detail)
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.system(size: 10 * scale, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)
                 Text(MetricFormat.percent(fraction))
-                    .font(.system(size: 10.5, weight: .medium, design: .rounded))
+                    .font(.system(size: 10.5 * scale, weight: .medium, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(fraction == nil ? .secondary : MetricPalette.color(fraction))
-                    .frame(width: 32, alignment: .trailing)
+                    .frame(width: 32 * scale, alignment: .trailing)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -93,7 +94,7 @@ struct MetricBar: View {
                     }
                 }
             }
-            .frame(height: 4)
+            .frame(height: 4 * scale)
         }
     }
 }
@@ -155,25 +156,26 @@ struct StatusPill: View {
     let color: Color
     let text: String
     var symbol: String?
+    var scale: CGFloat = 1
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 4 * scale) {
             if let symbol {
                 Image(systemName: symbol)
-                    .font(.system(size: 8, weight: .bold))
+                    .font(.system(size: 8 * scale, weight: .bold))
                     .foregroundStyle(color)
             } else {
                 Circle()
                     .fill(color)
-                    .frame(width: 6, height: 6)
-                    .shadow(color: color.opacity(0.55), radius: 3)
+                    .frame(width: 6 * scale, height: 6 * scale)
+                    .shadow(color: color.opacity(0.55), radius: 3 * scale)
             }
             Text(text)
-                .font(.system(size: 10, weight: .medium))
+                .font(.system(size: 10 * scale, weight: .medium))
                 .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 7 * scale)
+        .padding(.vertical, 3 * scale)
         .background(Capsule().fill(Color.primary.opacity(0.06)))
     }
 }
