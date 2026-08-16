@@ -48,15 +48,22 @@ final class SFTPBrowser {
         case failed(String)
     }
 
+    /// 一次进行中的传输。并发传输(如连拖两个文件下载)各持独立条目,
+    /// 互不覆盖标签/进度,先完成的只清自己,不会把别人的进度条带走。
+    struct ActiveTransfer: Identifiable, Equatable {
+        let id: UUID
+        var label: String
+        /// 0...1;nil 表示不确定(扫描中/体积未知)
+        var progress: Double?
+    }
+
     private(set) var state: State = .idle
     private(set) var path = "/"
     /// 登录 home,供路径输入的 ~ 展开
     private(set) var homePath = "/"
     private(set) var entries: [Entry] = []
-    /// 正在传输的说明(上传/下载),nil 表示空闲
-    private(set) var transfer: String?
-    /// 传输进度 0...1;nil 表示不确定(体积未知/小文件)
-    private(set) var transferProgress: Double?
+    /// 进行中的传输,按开始顺序排列;空表示空闲
+    private(set) var transfers: [ActiveTransfer] = []
 
     private var sftp: SFTPClient?
     private let opener: () async throws -> SFTPClient
@@ -177,6 +184,26 @@ final class SFTPBrowser {
     /// 分块传输的块大小(256KB):够大以摊薄往返开销,又够小以更新进度
     private static let chunkSize = 256 * 1024
 
+    private func beginTransfer(_ label: String, progress: Double? = nil) -> UUID {
+        let id = UUID()
+        transfers.append(ActiveTransfer(id: id, label: label, progress: progress))
+        return id
+    }
+
+    private func setTransfer(_ id: UUID, label: String) {
+        guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
+        transfers[index].label = label
+    }
+
+    private func setTransfer(_ id: UUID, progress: Double?) {
+        guard let index = transfers.firstIndex(where: { $0.id == id }) else { return }
+        transfers[index].progress = progress
+    }
+
+    private func endTransfer(_ id: UUID) {
+        transfers.removeAll { $0.id == id }
+    }
+
     func download(_ entry: Entry, to localURL: URL) async {
         do {
             try await performDownload(
@@ -213,20 +240,26 @@ final class SFTPBrowser {
         externalProgress: Progress?
     ) async throws {
         guard let sftp else { throw TransferError.sftpUnavailable }
-        defer { transfer = nil; transferProgress = nil }
 
         let remotePath = join(remoteDirectory, entry.name)
+        let transferID = beginTransfer(
+            entry.isDirectory
+                ? String(localized: "扫描 \(entry.name)…")
+                : String(localized: "下载 \(entry.name)…"),
+            progress: !entry.isDirectory && entry.size > 0 ? 0 : nil
+        )
+        defer { endTransfer(transferID) }
+
         if entry.isDirectory {
             try await performDirectoryDownload(
                 name: entry.name,
                 remotePath: remotePath,
                 localURL: localURL,
                 sftp: sftp,
+                transferID: transferID,
                 externalProgress: externalProgress
             )
         } else {
-            transfer = String(localized: "下载 \(entry.name)…")
-            transferProgress = entry.size > 0 ? 0 : nil
             externalProgress?.totalUnitCount = entry.size > 0 ? Int64(clamping: entry.size) : 1
             _ = try await copyRemoteFile(
                 remotePath: remotePath,
@@ -234,7 +267,7 @@ final class SFTPBrowser {
                 sftp: sftp
             ) { copied in
                 if entry.size > 0 {
-                    transferProgress = min(1, Double(copied) / Double(entry.size))
+                    setTransfer(transferID, progress: min(1, Double(copied) / Double(entry.size)))
                     externalProgress?.completedUnitCount = min(
                         externalProgress?.totalUnitCount ?? 0,
                         Int64(clamping: copied)
@@ -250,10 +283,9 @@ final class SFTPBrowser {
         remotePath: String,
         localURL: URL,
         sftp: SFTPClient,
+        transferID: UUID,
         externalProgress: Progress?
     ) async throws {
-        transfer = String(localized: "扫描 \(name)…")
-        transferProgress = nil
         let plan = try await Self.makeDirectoryDownloadPlan(remoteRoot: remotePath) { path in
             let names = try await sftp.listDirectory(atPath: path)
             return names.flatMap(\.components).compactMap { component in
@@ -275,10 +307,10 @@ final class SFTPBrowser {
         let totalUnits = plan.totalBytes > 0 ? Int64(clamping: plan.totalBytes) : 1
         externalProgress?.totalUnitCount = totalUnits
         externalProgress?.completedUnitCount = 0
-        transfer = plan.skippedSymlinks > 0
+        setTransfer(transferID, label: plan.skippedSymlinks > 0
             ? String(localized: "下载 \(name)…(跳过 \(plan.skippedSymlinks) 个符号链接)")
-            : String(localized: "下载 \(name)…")
-        transferProgress = plan.totalBytes > 0 ? 0 : nil
+            : String(localized: "下载 \(name)…"))
+        setTransfer(transferID, progress: plan.totalBytes > 0 ? 0 : nil)
 
         for components in plan.directories {
             try Task.checkCancellation()
@@ -299,14 +331,14 @@ final class SFTPBrowser {
             ) { fileBytes in
                 let aggregate = Self.saturatingAdd(base, fileBytes)
                 if plan.totalBytes > 0 {
-                    transferProgress = min(1, Double(aggregate) / Double(plan.totalBytes))
+                    setTransfer(transferID, progress: min(1, Double(aggregate) / Double(plan.totalBytes)))
                     externalProgress?.completedUnitCount = min(totalUnits, Int64(clamping: aggregate))
                 }
             }
             completedBytes = Self.saturatingAdd(completedBytes, copied)
         }
 
-        transferProgress = 1
+        setTransfer(transferID, progress: 1)
         externalProgress?.completedUnitCount = totalUnits
     }
 
@@ -404,12 +436,12 @@ final class SFTPBrowser {
     func upload(from localURL: URL) async {
         guard let sftp else { return }
         let name = localURL.lastPathComponent
-        transfer = String(localized: "上传 \(name)…")
-        defer { transfer = nil; transferProgress = nil }
+        let transferID = beginTransfer(String(localized: "上传 \(name)…"))
+        defer { endTransfer(transferID) }
         do {
             let data = try Data(contentsOf: localURL)
             let total = data.count
-            transferProgress = total > 0 ? 0 : nil
+            setTransfer(transferID, progress: total > 0 ? 0 : nil)
             let file = try await sftp.openFile(
                 filePath: join(path, name),
                 flags: [.write, .create, .truncate]
@@ -422,7 +454,7 @@ final class SFTPBrowser {
                 buffer.writeBytes(data[offset..<end])
                 try await file.write(buffer, at: UInt64(offset))
                 offset = end
-                transferProgress = Double(offset) / Double(total)
+                setTransfer(transferID, progress: Double(offset) / Double(total))
             }
             if total == 0 {
                 // 空文件也要建出来
