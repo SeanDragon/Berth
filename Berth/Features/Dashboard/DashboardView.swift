@@ -233,6 +233,9 @@ struct DashboardView: View {
                     .contextMenu { cardMenu(state) }
                 }
             }
+            // 重排一律不动画:实时采样下按指标排序会频繁换位,滑动动画看着像卡片乱跳;
+            // 顺带压掉切换排序时菜单收起事务带进来的隐式动画(只有部分卡片跟着动,更乱)
+            .animation(nil, value: visibleStates.map(\.id))
             .padding(14 * effectiveCardScale)
         }
     }
@@ -290,12 +293,19 @@ struct DashboardView: View {
             // 出问题的排前面:仪表盘的意义就是先看见坏消息
             return { rank($0.status) < rank($1.status) }
         case .cpu:
-            return { ($0.reading?.cpuFraction ?? -1) > ($1.reading?.cpuFraction ?? -1) }
+            return { metricRank($0.reading?.cpuFraction) > metricRank($1.reading?.cpuFraction) }
         case .memory:
-            return { ($0.reading?.memFraction ?? -1) > ($1.reading?.memFraction ?? -1) }
+            return { metricRank($0.reading?.memFraction) > metricRank($1.reading?.memFraction) }
         case .disk:
-            return { ($0.reading?.primaryDisk?.fraction ?? -1) > ($1.reading?.primaryDisk?.fraction ?? -1) }
+            return { metricRank($0.reading?.primaryDisk?.fraction) > metricRank($1.reading?.primaryDisk?.fraction) }
         }
+    }
+
+    /// 指标量化成 3 个百分点一档再排序:采样间的微小波动(6.01%→6.02%)不该让
+    /// 值相近的卡片每个周期都互换位置。排序是稳定的,同档保持既有顺序,只有跨档才移动。
+    private static func metricRank(_ fraction: Double?) -> Int {
+        guard let fraction else { return .min }
+        return Int((fraction * 100 / 3).rounded())
     }
 
     private static func rank(_ status: ServerMonitor.Status) -> Int {
