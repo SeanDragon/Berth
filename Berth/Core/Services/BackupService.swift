@@ -52,9 +52,12 @@ enum BackupService {
     // MARK: - 导出
 
     static func export(context: ModelContext) throws -> Data {
-        let groups = (try? context.fetch(FetchDescriptor<HostGroup>())) ?? []
+        // 导出不能把读取失败伪装成空备份,否则用户会得到一个看似成功、实则丢数据的 JSON。
+        // 同一 context 内尚未落盘的编辑也先保存,保证刚编辑完就导出时不会漏掉主机。
+        if context.hasChanges { try context.save() }
+        let groups = try context.fetch(FetchDescriptor<HostGroup>())
         // 只导出手动管理的主机(ssh_config 镜像不备份,它由 config 文件本身托管)
-        let hosts = ((try? context.fetch(FetchDescriptor<Host>())) ?? [])
+        let hosts = try context.fetch(FetchDescriptor<Host>())
             .filter { $0.source == .manual }
 
         let backup = Backup(

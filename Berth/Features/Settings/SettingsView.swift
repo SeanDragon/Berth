@@ -309,7 +309,7 @@ struct SettingsView: View {
                     Button("导出备份…") { exportBackup() }
                     Button("导入备份…") { importBackup() }
                 }
-                Text("备份为 JSON,只含主机/分组/转发/代理结构;密码、passphrase、私钥在 Keychain,不会导出。")
+                Text("备份为 JSON,只含托管主机/分组/转发/代理结构;密码、passphrase、私钥在 Keychain,不会导出。来自 ~/.ssh/config 的只读主机由本机配置文件管理,不会包含在备份中。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let dataMessage {

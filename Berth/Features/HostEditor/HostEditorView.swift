@@ -389,6 +389,15 @@ struct HostEditorView: View {
             return
         }
 
+        // SwiftData 的自动保存不保证在用户紧接着打开「导出备份」前完成。
+        // 显式提交让新建/编辑的主机、分组和转发立刻对设置窗口的 context 可见。
+        do {
+            try modelContext.save()
+        } catch {
+            validationMessage = String(localized: "保存主机失败:\(error.localizedDescription)")
+            return
+        }
+
         dismiss()
         if andConnect {
             if let onConnect {
