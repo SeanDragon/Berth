@@ -34,3 +34,19 @@ struct WindowConfigurator: NSViewRepresentable {
         window.backgroundColor = translucent ? .clear : backgroundColor
     }
 }
+
+/// macOS 15 的 NavigationSplitView 收放侧栏时会重建标题栏区,把 titleVisibility 复位成
+/// 可见,窗口标题「Berth」随之冒出来还占一截宽(issue #14)。收放动作后重新藏一次;
+/// 动画结束还补一发,防止 AppKit 在动画收尾时再次复位。
+@MainActor
+enum WindowChromeGuard {
+    static func reassertHiddenTitle(identifier: NSUserInterfaceItemIdentifier) {
+        for delay in [0.0, 0.45] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard let window = NSApp.windows.first(where: { $0.identifier == identifier }) else { return }
+                window.titleVisibility = .hidden
+                window.titlebarAppearsTransparent = true
+            }
+        }
+    }
+}

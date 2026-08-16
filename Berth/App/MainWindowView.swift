@@ -10,6 +10,8 @@ struct MainWindowView: View {
     @State private var theme = ThemeStore.shared
     @State private var onboarding = OnboardingController.shared
     @State private var windowWidth: CGFloat = 0
+    /// 绑定侧栏显隐只为一件事:收放后重新隐藏窗口标题(macOS 15 会把「Berth」带回来,issue #14)
+    @State private var columnVisibility = NavigationSplitViewVisibility.all
     @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @Environment(\.modelContext) private var modelContext
 
@@ -18,7 +20,7 @@ struct MainWindowView: View {
         @Bindable var snippetRun = snippetRun
         @Bindable var onboarding = onboarding
         ZStack {
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 SidebarView()
                     .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 320)
             } detail: {
@@ -52,6 +54,9 @@ struct MainWindowView: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { windowWidth = $0 }
+        .onChange(of: columnVisibility) { _, _ in
+            WindowChromeGuard.reassertHiddenTitle(identifier: MainWindowRaiser.identifier)
+        }
         .tint(theme.current.accentColor)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: quickConnect.isPresented)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: commandPalette.isPresented)
