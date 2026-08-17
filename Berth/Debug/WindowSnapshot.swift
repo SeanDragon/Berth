@@ -31,7 +31,22 @@ enum WindowSnapshot {
         }
         let delay = Double(env["BERTH_SNAPSHOT_DELAY"] ?? "3") ?? 3
         try? await Task.sleep(for: .seconds(delay))
-        guard let window = NSApp.windows.first(where: { $0.isVisible && $0.contentView != nil }),
+        capture(to: path)
+        // issue #14:标题栏布局要连着看侧栏收/放两态 —— 再截 <path>.collapsed.png
+        // 和 <path>.reexpanded.png,验证收起后标签条还在、展开后能复原
+        guard env["BERTH_SNAPSHOT_TOGGLE_SIDEBAR"] == "1" else { return }
+        for suffix in ["collapsed", "reexpanded"] {
+            NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+            try? await Task.sleep(for: .seconds(1.5))
+            capture(to: (path as NSString).deletingPathExtension + ".\(suffix).png")
+        }
+    }
+
+    private static func capture(to path: String) {
+        // 认准主窗口:溢出菜单/气泡之类的小窗也在 NSApp.windows 里,取 first 会截到它们
+        let visible = NSApp.windows.filter { $0.isVisible && $0.contentView != nil }
+        guard let window = visible.first(where: { $0.identifier == MainWindowRaiser.identifier })
+            ?? visible.max(by: { $0.frame.width < $1.frame.width }),
               let frameView = window.contentView?.superview ?? window.contentView else { return }
         let bounds = frameView.bounds
         guard let rep = frameView.bitmapImageRepForCachingDisplay(in: bounds) else { return }

@@ -15,8 +15,13 @@ struct TerminalTabsView: View {
     @State private var chipFrames: [UUID: CGRect] = [:]
     /// 终端区自身实测宽度(≠窗口宽:侧栏可见时小于 windowWidth),macOS 15 工具条布局用
     @State private var detailWidth: CGFloat = 0
+    /// macOS 15 合成工具条 item 的左边缘实测值(见 ToolbarLeadingProbe)
+    @State private var toolbarMetrics = ToolbarLeadingMetrics()
     private static let chipSpacing: CGFloat = 2
     private static let chipTrackSpace = "chipTrack"
+    /// 调试开关:在 macOS 26+ 上强制走 15 的工具条路径,方便本机复现/验收 issue #14
+    private static let forcesLegacyChrome =
+        ProcessInfo.processInfo.environment["BERTH_LEGACY_CHROME"] == "1"
 
     var body: some View {
         @Bindable var manager = sessionManager
@@ -95,32 +100,19 @@ struct TerminalTabsView: View {
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { detailWidth = $0 }
-        // automatic 不会像 navigation placement 那样随侧栏一起消失。macOS 26
-        // 用原生 ToolbarSpacer 把操作组真正锚到右边缘;macOS 15 没有 ToolbarSpacer,
-        // 分项排列会让按钮组悬在中间、侧栏展开时还会把尾部按钮挤进溢出菜单(issue #14),
-        // 所以合成单个 item 自己排:chips 弹性伸缩 + Spacer 把按钮推到右缘,宽度跟随终端区实测宽。
+        .task {
+            // 验收注入:等探针量准之后再把宽度撑爆,检验 item 只会被压窄不会整条消失
+            guard let raw = ProcessInfo.processInfo.environment["BERTH_TOOLBAR_OVERSHOOT"],
+                  let points = Double(raw) else { return }
+            try? await Task.sleep(for: .seconds(4))
+            toolbarMetrics.debugOvershoot = points
+        }
+        // automatic 不会像 navigation placement 那样随侧栏一起消失。
         .toolbar {
             if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .automatic) {
-                    if !sessionManager.tabs.isEmpty { toolbarTabs }
-                }
-                .sharedBackgroundVisibility(.hidden)
-                ToolbarSpacer(.flexible)
-                ToolbarItem(placement: .automatic) {
-                    if !sessionManager.tabs.isEmpty { panelButtons }
-                }
-                .sharedBackgroundVisibility(.hidden)
+                if Self.forcesLegacyChrome { legacyToolbarContent } else { modernToolbarContent }
             } else {
-                ToolbarItem(placement: .automatic) {
-                    if !sessionManager.tabs.isEmpty {
-                        HStack(spacing: 8) {
-                            tabChips
-                            Spacer(minLength: 8)
-                            panelButtons
-                        }
-                        .frame(width: legacyToolbarWidth)
-                    }
-                }
+                legacyToolbarContent
             }
         }
         .alert(
@@ -167,6 +159,42 @@ struct TerminalTabsView: View {
         }
     }
 
+    /// macOS 26:原生 ToolbarSpacer 把操作组真正锚到右边缘。
+    @available(macOS 26.0, *)
+    @ToolbarContentBuilder
+    private var modernToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            if !sessionManager.tabs.isEmpty { toolbarTabs }
+        }
+        .sharedBackgroundVisibility(.hidden)
+        ToolbarSpacer(.flexible)
+        ToolbarItem(placement: .automatic) {
+            if !sessionManager.tabs.isEmpty { panelButtons }
+        }
+        .sharedBackgroundVisibility(.hidden)
+    }
+
+    /// macOS 15:没有 ToolbarSpacer,分项排列会让按钮组悬在中间,所以合成单个 item
+    /// 自己排(chips 弹性 + Spacer 把按钮推到右缘),宽度见 legacyToolbarWidth。
+    @ToolbarContentBuilder
+    private var legacyToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .automatic) {
+            if !sessionManager.tabs.isEmpty {
+                HStack(spacing: 8) {
+                    tabChips
+                    Spacer(minLength: 8)
+                    panelButtons
+                }
+                // 可压缩下限要和 ToolbarLeadingProbe 钉给 NSToolbarItem 的 minSize 一致:
+                // 光有这个 frame 不管用(SwiftUI 只把 ideal 报上去),得两边配合
+                .frame(minWidth: 260, idealWidth: legacyToolbarWidth, maxWidth: legacyToolbarWidth)
+                .background(alignment: .leading) {
+                    ToolbarLeadingProbe(metrics: toolbarMetrics).frame(width: 1, height: 1)
+                }
+            }
+        }
+    }
+
     /// 从系统侧栏按钮之后使用可用空间,多标签在其中横向滚动。
     private var toolbarTabs: some View {
         tabChips
@@ -175,12 +203,18 @@ struct TerminalTabsView: View {
             .frame(width: max(windowWidth - 500, 220), alignment: .leading)
     }
 
-    /// macOS 15:chips+按钮合成的单 item 宽度。给系统件留位后铺满终端区,
-    /// 侧栏隐藏时(终端区≈整窗宽)侧栏切换按钮落在同一条工具条里,要多留一截,
-    /// 否则 item 放不下会被 NSToolbar 折进溢出菜单(正是 issue #14 的「按钮不全」)。
+    /// macOS 15 合成 item 的目标宽度:窗口宽减去实测左边缘,再留一点右边距;
+    /// 右边距是这里唯一还在猜的量,猜窄了会被折进溢出菜单,所以探针发现溢出后
+    /// 会往 overflowBackoff 上加码,这里跟着退让(见 ToolbarLeadingMetrics)。
+    /// 探针出结果前用保守估计撑着 —— 宁可窄一截,也不能超出可用空间。
     private var legacyToolbarWidth: CGFloat {
-        let sidebarHidden = detailWidth >= windowWidth - 4
-        return max(detailWidth - (sidebarHidden ? 104 : 40), 320)
+        let trailingInset = 16 + toolbarMetrics.overflowBackoff
+        let overshoot = toolbarMetrics.debugOvershoot
+        if let originX = toolbarMetrics.originX, windowWidth > originX + 200 {
+            return max(windowWidth - originX - trailingInset, 260) + overshoot
+        }
+        // 保守估计分支同样吃 backoff:万一首帧就折进溢出菜单,退让也得能生效
+        return max(detailWidth - 200 - toolbarMetrics.overflowBackoff, 260) + overshoot
     }
 
     /// 标签 chips(标题栏左侧):每个标签一枚 chip(含嵌套分屏);两端渐隐,选中自动滚入;
