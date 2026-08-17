@@ -29,6 +29,11 @@ enum WindowSnapshot {
                 tab.setRatio(ratio, for: id)
             }
         }
+        // 往焦点会话灌文本(自动补回车):截「终端滚满内容」的布局,如 seq 1 200
+        if let typed = env["BERTH_SNAPSHOT_TYPE"], !typed.isEmpty {
+            try? await Task.sleep(for: .seconds(1.5))
+            SessionManager.shared.selected?.sendText(typed + "\n")
+        }
         let delay = Double(env["BERTH_SNAPSHOT_DELAY"] ?? "3") ?? 3
         try? await Task.sleep(for: .seconds(delay))
         capture(to: path)
@@ -36,6 +41,11 @@ enum WindowSnapshot {
         // 和 <path>.reexpanded.png,验证收起后标签条还在、展开后能复原
         guard env["BERTH_SNAPSHOT_TOGGLE_SIDEBAR"] == "1" else { return }
         for suffix in ["collapsed", "reexpanded"] {
+            // sendAction 走按键响应链,app 不在前台会被静默丢弃 —— 先抢前台把窗口置 key
+            NSApp.activate(ignoringOtherApps: true)
+            NSApp.windows.first { $0.isVisible && $0.identifier == MainWindowRaiser.identifier }?
+                .makeKeyAndOrderFront(nil)
+            try? await Task.sleep(for: .milliseconds(300))
             NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
             try? await Task.sleep(for: .seconds(1.5))
             capture(to: (path as NSString).deletingPathExtension + ".\(suffix).png")
