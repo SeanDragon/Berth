@@ -213,6 +213,10 @@ struct SFTPPanelView: View {
                 pendingDelete = nil
             }
             Button("取消", role: .cancel) { pendingDelete = nil }
+        } message: {
+            Text(pendingDelete?.isDirectory == true
+                ? String(localized: "文件夹及其中所有内容将被删除,不可撤销。")
+                : String(localized: "此操作不可撤销。"))
         }
         .alert("重命名", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("新名称", text: $renameText)
@@ -278,8 +282,8 @@ struct SFTPPanelView: View {
                 if browser?.editing[browserRemotePath(entry)] != nil {
                     Button("停止编辑(取消自动回传)") { browser?.stopEditing(browserRemotePath(entry)) }
                 }
-                Button("下载…") { downloadPick(entry) }
             }
+            Button("下载…") { downloadPick(entry) }  // 目录走递归下载,与拖出同一条路
             Button("重命名…") { renaming = entry; renameText = entry.name }
             Button("权限…") { chmodEntry = entry; chmodMode = entry.mode }
             Divider()
@@ -377,69 +381,9 @@ struct SFTPPanelView: View {
         return true
     }
 
-    /// Finder 会在用户真正放下文件后请求这个延迟表示。先下载到独立临时目录,
-    /// 交给 NSItemProvider 复制,并在宽限期后清理临时副本。
+    /// 拖出下载:构造延迟文件表示的 NSItemProvider(实现在 SFTPDragProvider,验收共用)
     private func remoteFileProvider(for entry: SFTPBrowser.Entry) -> NSItemProvider {
-        let provider = NSItemProvider()
-
-        let pathExtension = (entry.name as NSString).pathExtension
-        let inferredType = entry.isDirectory || pathExtension.isEmpty
-            ? nil
-            : UTType(filenameExtension: pathExtension)
-        let contentType = entry.isDirectory ? UTType.folder : (inferredType ?? .data)
-        // Finder 会按 UTI 自动补首选扩展名;这里给基名可避免 foo.json.json。
-        // 未知扩展名会回落 public.data,它不会自动补扩展,因此仍保留完整名称。
-        provider.suggestedName = entry.isDirectory || inferredType?.preferredFilenameExtension == nil
-            ? entry.name
-            : (entry.name as NSString).deletingPathExtension
-        let remoteDirectory = browser?.path ?? "/"
-        let dragBrowser = browser
-
-        provider.registerFileRepresentation(
-            forTypeIdentifier: contentType.identifier,
-            fileOptions: [],
-            visibility: .all
-        ) { completion in
-            let total = !entry.isDirectory && entry.size > 0 ? Int64(clamping: entry.size) : 1
-            let progress = Progress(totalUnitCount: total)
-            let task = Task { @MainActor in
-                let temporaryDirectory = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("Berth-Drag-\(UUID().uuidString)", isDirectory: true)
-                let localURL = temporaryDirectory.appendingPathComponent(
-                    entry.name,
-                    isDirectory: entry.isDirectory
-                )
-
-                do {
-                    guard let dragBrowser else {
-                        throw CocoaError(.fileNoSuchFile)
-                    }
-                    try FileManager.default.createDirectory(
-                        at: temporaryDirectory,
-                        withIntermediateDirectories: true
-                    )
-                    try await dragBrowser.downloadForDrag(
-                        entry,
-                        remoteDirectory: remoteDirectory,
-                        to: localURL,
-                        progress: progress
-                    )
-                    completion(localURL, false, nil)
-                    // 文件表示的接收方可能在 completion 返回后才开始复制。给 Finder 足够的
-                    // 取用时间,再清理由 Berth 创建的临时副本;系统临时目录也会兜底清理。
-                    Task.detached {
-                        try? await Task.sleep(for: .seconds(30 * 60))
-                        try? FileManager.default.removeItem(at: temporaryDirectory)
-                    }
-                } catch {
-                    completion(nil, false, error)
-                    try? FileManager.default.removeItem(at: temporaryDirectory)
-                }
-            }
-            progress.cancellationHandler = { task.cancel() }
-            return progress
-        }
-        return provider
+        SFTPDragProvider.make(entry: entry, remoteDirectory: browser?.path ?? "/", browser: browser)
     }
 
     private func sizeText(_ bytes: UInt64) -> String {

@@ -58,6 +58,30 @@ final class SFTPBrowserTests: XCTestCase {
         XCTAssertEqual(plan.skippedSymlinks, 1)
     }
 
+    /// 递归删除:文件与符号链接先删(链接删自身),目录按最深优先,root 最后
+    func testDirectoryDeletePlanOrdersDeepestFirst() async throws {
+        typealias Item = SFTPBrowser.DownloadTreeEntry
+        let tree: [String: [Item]] = [
+            "/srv/junk": [
+                Item(name: "a.txt", kind: .file, size: 1),
+                Item(name: "link", kind: .symlink, size: 1),
+                Item(name: "sub", kind: .directory, size: 0),
+            ],
+            "/srv/junk/sub": [
+                Item(name: "deep", kind: .directory, size: 0),
+                Item(name: "b.txt", kind: .file, size: 1),
+            ],
+            "/srv/junk/sub/deep": [],
+        ]
+
+        let plan = try await SFTPBrowser.makeDirectoryDeletePlan(remoteRoot: "/srv/junk") { path in
+            tree[path] ?? []
+        }
+
+        XCTAssertEqual(plan.removals, ["/srv/junk/a.txt", "/srv/junk/link", "/srv/junk/sub/b.txt"])
+        XCTAssertEqual(plan.directories, ["/srv/junk/sub/deep", "/srv/junk/sub", "/srv/junk"])
+    }
+
     func testDirectoryUploadPlanRecursesAndSkipsSymlinks() throws {
         typealias Item = SFTPBrowser.UploadTreeEntry
         let root = URL(fileURLWithPath: "/local/project")

@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import SwiftTerm
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// M2 自动化验收:BERTH_M2_AUTOTEST=1。凭据走环境变量。
 /// 覆盖:
@@ -424,13 +425,37 @@ enum M2AcceptanceTest {
             && (try? fm.attributesOfItem(atPath: zeroPath)[.size] as? UInt64) == 0
         let linkSkipped = !fm.fileExists(atPath: downRoot.appendingPathComponent("linked").path)
 
-        // 远端清理:rmdir 不递归,走 shell
-        session.sendText("rm -rf ~/\(stamp)\n")
-        try? await Task.sleep(for: .milliseconds(600))
+        // 文件夹拖出下载:不经 Finder,直接向 NSItemProvider 要 folder 文件表示,
+        // 走的是拖拽完全相同的注册路径(SFTPDragProvider)
+        let provider = SFTPDragProvider.make(entry: remoteDir, remoteDirectory: browser.path, browser: browser)
+        let dragCopy = localRoot.appendingPathComponent("drag", isDirectory: true)
+        let dragLoaded: Bool = await withCheckedContinuation { cont in
+            _ = provider.loadFileRepresentation(forTypeIdentifier: UTType.folder.identifier) { url, _ in
+                // URL 只在回调内有效(Finder 也是在这里复制),当场拷走
+                guard let url, (try? fm.copyItem(at: url, to: dragCopy)) != nil else {
+                    cont.resume(returning: false)
+                    return
+                }
+                cont.resume(returning: true)
+            }
+        }
+        let dragRoundtrip = dragLoaded
+            && (try? Data(contentsOf: dragCopy.appendingPathComponent("a.txt"))) == alpha
+            && (try? Data(contentsOf: dragCopy.appendingPathComponent("nested/b.bin"))) == blob
 
-        let ok = gotAlpha && gotBlob && gotZero && linkSkipped
+        // 递归删除:先在远端目录里放个符号链接(上传不会带过去),连它一起删干净
+        session.sendText("ln -s a.txt ~/\(stamp)/link\n")
+        try? await Task.sleep(for: .milliseconds(600))
+        await browser.delete(remoteDir)
+        await browser.refresh()
+        let recursiveDeleted = !browser.entries.contains { $0.name == stamp }
+
+        let ok = gotAlpha && gotBlob && gotZero && linkSkipped && dragRoundtrip && recursiveDeleted
         if !ok {
-            log("SFTP_FAIL dirRoundtrip alpha=\(gotAlpha) blob=\(gotBlob) zero=\(gotZero) linkSkipped=\(linkSkipped)")
+            log("SFTP_FAIL dirRoundtrip alpha=\(gotAlpha) blob=\(gotBlob) zero=\(gotZero) linkSkipped=\(linkSkipped) drag=\(dragRoundtrip) rmRecursive=\(recursiveDeleted)")
+            // 兜底清理,避免残留影响下次跑
+            session.sendText("rm -rf ~/\(stamp)\n")
+            try? await Task.sleep(for: .milliseconds(400))
         }
         return ok
     }

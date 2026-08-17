@@ -433,6 +433,38 @@ final class SFTPBrowser {
         return overflow ? .max : sum
     }
 
+    /// 递归删除的执行顺序:先删文件与符号链接(链接删自身、不跟随),再按「最深优先」
+    /// 删目录(rmdir 只认空目录)。root 排在 directories 最后。
+    struct DirectoryDeletePlan: Equatable, Sendable {
+        var removals: [String] = []
+        var directories: [String] = []
+    }
+
+    static func makeDirectoryDeletePlan(
+        remoteRoot: String,
+        list: (_ remotePath: String) async throws -> [DownloadTreeEntry]
+    ) async throws -> DirectoryDeletePlan {
+        var plan = DirectoryDeletePlan()
+
+        func scan(remotePath: String) async throws {
+            try Task.checkCancellation()
+            for entry in try await list(remotePath) {
+                guard entry.name != ".", entry.name != ".." else { continue }
+                let childPath = remotePath == "/" ? "/\(entry.name)" : "\(remotePath)/\(entry.name)"
+                switch entry.kind {
+                case .directory:
+                    try await scan(remotePath: childPath)
+                case .file, .symlink:
+                    plan.removals.append(childPath)
+                }
+            }
+            plan.directories.append(remotePath)
+        }
+
+        try await scan(remotePath: remoteRoot)
+        return plan
+    }
+
     /// 上传前先扫描本地目录树(issue #17),与下载 plan 对称:符号链接不跟随,
     /// 避免循环与把树外目标意外上传;list 可注入便于测试。
     static func makeDirectoryUploadPlan(
@@ -759,12 +791,43 @@ final class SFTPBrowser {
         }
     }
 
+    /// 删除文件/符号链接直接 remove;目录递归删除(rmdir 只认空目录,非空必须先清内容)
     func delete(_ entry: Entry) async {
         guard let sftp else { return }
         do {
             let full = join(path, entry.name)
             if entry.isDirectory {
-                try await sftp.rmdir(at: full)
+                let transferID = beginTransfer(String(localized: "删除 \(entry.name)…"))
+                defer { endTransfer(transferID) }
+                let plan = try await Self.makeDirectoryDeletePlan(remoteRoot: full) { path in
+                    let names = try await sftp.listDirectory(atPath: path)
+                    return names.flatMap(\.components).compactMap { component in
+                        guard component.filename != ".", component.filename != ".." else { return nil }
+                        let kind: DownloadTreeEntry.Kind = switch fileType(component) {
+                        case .directory: .directory
+                        case .symlink: .symlink
+                        case .file: .file
+                        }
+                        return DownloadTreeEntry(
+                            name: component.filename, kind: kind,
+                            size: component.attributes.size ?? 0
+                        )
+                    }
+                }
+                let total = plan.removals.count + plan.directories.count
+                var done = 0
+                for removal in plan.removals {
+                    try Task.checkCancellation()
+                    try await sftp.remove(at: removal)
+                    done += 1
+                    setTransfer(transferID, progress: Double(done) / Double(total))
+                }
+                for directory in plan.directories {
+                    try Task.checkCancellation()
+                    try await sftp.rmdir(at: directory)
+                    done += 1
+                    setTransfer(transferID, progress: Double(done) / Double(total))
+                }
             } else {
                 try await sftp.remove(at: full)
             }

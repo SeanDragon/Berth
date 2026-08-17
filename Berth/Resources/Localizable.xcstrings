@@ -2506,6 +2506,16 @@
         }
       }
     },
+    "删除 %@…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deleting %@…"
+          }
+        }
+      }
+    },
     "删除…": {
       "localizations": {
         "en": {
@@ -4456,6 +4466,16 @@
         }
       }
     },
+    "文件夹及其中所有内容将被删除,不可撤销。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The folder and everything inside it will be deleted. This cannot be undone."
+          }
+        }
+      }
+    },
     "文件或目录不存在": {
       "localizations": {
         "en": {
@@ -5503,6 +5523,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Command highlighting is enabled on this host"
+          }
+        }
+      }
+    },
+    "此操作不可撤销。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This cannot be undone."
           }
         }
       }
