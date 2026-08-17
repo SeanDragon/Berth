@@ -51,6 +51,7 @@ struct BerthApp: App {
                     await DashboardAcceptanceTest.runIfRequested(container: container)
                     // 并发跑:不挡在启动链前头,否则截不到会话恢复后的画面
                     Task { await WindowSnapshot.runIfRequested() }
+                    Task { await SettingsContextProbe.runIfRequested() }
                     await DemoScene.runIfRequested(container: container)
                     // 自动化验收/临时库环境不做会话恢复,也不发检查更新请求
                     let env = ProcessInfo.processInfo.environment
@@ -129,9 +130,13 @@ struct BerthApp: App {
         }
         .modelContainer(container)
 
+        // ⚠️ 必须挂 .modelContainer:Settings scene 不继承其他场景的环境,漏挂时
+        // SwiftUI 会兜一个指向 /dev/null 的空容器(不崩、fetch 永远为空),
+        // 设置页的备份导出就会写出没有任何主机的 JSON(issue #15)
         Settings {
             SettingsView()
         }
+        .modelContainer(container)
 
     }
 }

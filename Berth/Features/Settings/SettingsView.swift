@@ -108,6 +108,10 @@ struct SettingsView: View {
         }
         .tint(theme.accentColor)
         .navigationTitle("设置")
+        .onAppear {
+            // issue #15 诊断探针,仅 BERTH_SETTINGS_PROBE 时活动
+            SettingsContextProbe.report(settingsContext: modelContext)
+        }
     }
 
     private var theme: TerminalTheme { themeStore.current }
