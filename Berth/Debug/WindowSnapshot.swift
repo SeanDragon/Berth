@@ -39,16 +39,26 @@ enum WindowSnapshot {
         capture(to: path)
         // issue #14:标题栏布局要连着看侧栏收/放两态 —— 再截 <path>.collapsed.png
         // 和 <path>.reexpanded.png,验证收起后标签条还在、展开后能复原
-        guard env["BERTH_SNAPSHOT_TOGGLE_SIDEBAR"] == "1" else { return }
-        for suffix in ["collapsed", "reexpanded"] {
-            // sendAction 走按键响应链,app 不在前台会被静默丢弃 —— 先抢前台把窗口置 key
-            NSApp.activate(ignoringOtherApps: true)
-            NSApp.windows.first { $0.isVisible && $0.identifier == MainWindowRaiser.identifier }?
-                .makeKeyAndOrderFront(nil)
-            try? await Task.sleep(for: .milliseconds(300))
-            NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+        if env["BERTH_SNAPSHOT_TOGGLE_SIDEBAR"] == "1" {
+            for suffix in ["collapsed", "reexpanded"] {
+                // sendAction 走按键响应链,app 不在前台会被静默丢弃 —— 先抢前台把窗口置 key
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.windows.first { $0.isVisible && $0.identifier == MainWindowRaiser.identifier }?
+                    .makeKeyAndOrderFront(nil)
+                try? await Task.sleep(for: .milliseconds(300))
+                NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+                try? await Task.sleep(for: .seconds(1.5))
+                capture(to: (path as NSString).deletingPathExtension + ".\(suffix).png")
+            }
+        }
+        // 窗口缩放后的布局收敛(issue #14 右缘空白):改宽再截 <path>.resized.png
+        if let width = Double(env["BERTH_SNAPSHOT_RESIZE"] ?? ""),
+           let window = NSApp.windows.first(where: { $0.isVisible && $0.identifier == MainWindowRaiser.identifier }) {
+            var frame = window.frame
+            frame.size.width = width
+            window.setFrame(frame, display: true, animate: false)
             try? await Task.sleep(for: .seconds(1.5))
-            capture(to: (path as NSString).deletingPathExtension + ".\(suffix).png")
+            capture(to: (path as NSString).deletingPathExtension + ".resized.png")
         }
     }
 
