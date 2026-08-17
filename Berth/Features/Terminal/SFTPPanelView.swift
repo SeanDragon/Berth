@@ -82,7 +82,7 @@ struct SFTPPanelView: View {
     private var header: some View {
         PanelHeader(title: String(localized: "文件")) {
             PanelIconButton(symbol: "folder.badge.plus", help: String(localized: "新建文件夹")) { creatingDir = true }
-            PanelIconButton(symbol: "square.and.arrow.up", help: String(localized: "上传文件")) { uploadPick() }
+            PanelIconButton(symbol: "square.and.arrow.up", help: String(localized: "上传文件或文件夹")) { uploadPick() }
             PanelIconButton(symbol: "arrow.clockwise", help: String(localized: "刷新")) { Task { await browser?.refresh() } }
             PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
         }
@@ -359,7 +359,7 @@ struct SFTPPanelView: View {
     private func uploadPick() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.canChooseDirectories = false
+        panel.canChooseDirectories = true    // issue #17:支持整个文件夹上传
         if panel.runModal() == .OK {
             for url in panel.urls {
                 Task { await browser?.upload(from: url) }

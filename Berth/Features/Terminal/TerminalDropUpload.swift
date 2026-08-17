@@ -86,14 +86,10 @@ final class TerminalDropUploadModel {
     }
 
     private func processDrop(_ providers: [NSItemProvider], session: TerminalSession) async {
-        let urls = await Self.fileURLs(from: providers)
-        let files = urls.filter { url in
-            var isDir: ObjCBool = false
-            FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
-            return !isDir.boolValue
-        }
+        // 文件与文件夹都收(issue #17:文件夹走递归上传)
+        let files = await Self.fileURLs(from: providers)
         guard !files.isEmpty else {
-            show(.failed(String(localized: "暂不支持上传文件夹,请拖入文件。")))
+            show(.failed(String(localized: "没有可上传的文件。")))
             return
         }
 
@@ -180,32 +176,31 @@ final class TerminalDropUploadModel {
         Task { await upload(urls, to: pending.directory, session: session, checkConflicts: false) }
     }
 
-    /// 流式分块上传(256KB),大文件不整读进内存
+    /// 单项上传:文件走流式分块;文件夹先扫描再递归(issue #17),均复用 SFTPBrowser 的实现
     private func uploadOne(
         _ localURL: URL, into directory: String, sftp: SFTPClient,
         onProgress: @escaping (Double?) -> Void
     ) async throws {
-        let total = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? UInt64) ?? 0
-        let handle = try FileHandle(forReadingFrom: localURL)
-        defer { try? handle.close() }
-        let file = try await sftp.openFile(
-            filePath: Self.join(directory, localURL.lastPathComponent),
-            flags: [.write, .create, .truncate]
-        )
-        defer { Task { try? await file.close() } }
-
-        let chunkSize = 256 * 1024
-        var offset: UInt64 = 0
-        while let data = try handle.read(upToCount: chunkSize), !data.isEmpty {
-            var buffer = ByteBufferAllocator().buffer(capacity: data.count)
-            buffer.writeBytes(data)
-            try await file.write(buffer, at: offset)
-            offset += UInt64(data.count)
-            onProgress(total > 0 ? min(1, Double(offset) / Double(total)) : nil)
-        }
-        if offset == 0 {
-            // 空文件也要建出来
-            try await file.write(ByteBufferAllocator().buffer(capacity: 0), at: 0)
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: localURL.path, isDirectory: &isDir)
+        if isDir.boolValue {
+            try await SFTPBrowser.performDirectoryUpload(
+                localRoot: localURL,
+                remoteRoot: Self.join(directory, localURL.lastPathComponent),
+                sftp: sftp,
+                onProgress: { copied, total in
+                    onProgress(total > 0 ? min(1, Double(copied) / Double(total)) : nil)
+                }
+            )
+        } else {
+            let total = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? UInt64) ?? 0
+            try await SFTPBrowser.uploadLocalFile(
+                localURL,
+                to: Self.join(directory, localURL.lastPathComponent),
+                sftp: sftp
+            ) { copied in
+                onProgress(total > 0 ? min(1, Double(copied) / Double(total)) : nil)
+            }
         }
     }
 
@@ -328,7 +323,7 @@ struct TerminalDropOverlay: View {
         case .done(let count, let directory):
             HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                Text("已上传 \(count) 个文件到 \(directory)")
+                Text("已上传 \(count) 项到 \(directory)")
                     .font(.system(size: 11.5))
                     .lineLimit(1)
                     .truncationMode(.middle)
@@ -374,7 +369,7 @@ struct DropDestinationSheet: View {
                 .font(.system(size: 12.5, design: .monospaced))
                 .onSubmit(submit)
             HStack {
-                Text(batch.urls.count > 1 ? "\(batch.urls.count) 个文件" : batch.urls.first?.lastPathComponent ?? "")
+                Text(batch.urls.count > 1 ? "\(batch.urls.count) 项" : batch.urls.first?.lastPathComponent ?? "")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()

@@ -356,18 +356,83 @@ enum M2AcceptanceTest {
 
         // 下载回来校验
         let localDown = URL(fileURLWithPath: NSTemporaryDirectory() + "berth_sftp_down.txt")
-        if let entry = browser.entries.first(where: { $0.name == "berth_sftp_up.txt" }) {
-            await browser.download(entry, to: localDown)
-            let roundtrip = (try? Data(contentsOf: localDown)) == payload
-            // 清理
-            await browser.delete(entry)
-            await browser.refresh()
-            let deleted = !browser.entries.contains { $0.name == "berth_sftp_up.txt" }
-            log("SFTP_OK home=\(homeListed) uploaded=\(uploaded) roundtrip=\(roundtrip) deleted=\(deleted) followsCwd=\(followsCwd)")
-        } else {
+        guard let entry = browser.entries.first(where: { $0.name == "berth_sftp_up.txt" }) else {
             log("SFTP_FAIL 上传后未找到文件 home=\(homeListed) uploaded=\(uploaded)")
+            browser.close()
+            return
         }
+        await browser.download(entry, to: localDown)
+        let roundtrip = (try? Data(contentsOf: localDown)) == payload
+        await browser.delete(entry)
+        await browser.refresh()
+        let deleted = !browser.entries.contains { $0.name == "berth_sftp_up.txt" }
+
+        // 目录递归上传往返(issue #17):嵌套目录 + 空文件 + 符号链接(应跳过)
+        let dirRoundtrip = await verifyDirectoryRoundtrip(browser: browser, session: session, log: log)
+
+        log("SFTP_OK home=\(homeListed) uploaded=\(uploaded) roundtrip=\(roundtrip) deleted=\(deleted) followsCwd=\(followsCwd) dirRoundtrip=\(dirRoundtrip)")
         browser.close()
+    }
+
+    /// issue #17 验收:建本地目录树(含符号链接)→ 递归上传 → 递归下载回来逐文件比对
+    /// → 符号链接不应被上传 → 用 shell 清理远端(rmdir 不递归,面板删除不适用)
+    private static func verifyDirectoryRoundtrip(
+        browser: SFTPBrowser,
+        session: TerminalSession,
+        log: (String) -> Void
+    ) async -> Bool {
+        let fm = FileManager.default
+        let stamp = "berth_sftp_dir"
+        let localRoot = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("berth-dirtest-\(UUID().uuidString)", isDirectory: true)
+        let src = localRoot.appendingPathComponent(stamp, isDirectory: true)
+        let alpha = Data("alpha".utf8)
+        let blob = Data((0..<1024).map { UInt8($0 % 251) })
+        defer { try? fm.removeItem(at: localRoot) }
+        do {
+            try fm.createDirectory(
+                at: src.appendingPathComponent("nested/deeper", isDirectory: true),
+                withIntermediateDirectories: true
+            )
+            try alpha.write(to: src.appendingPathComponent("a.txt"))
+            try blob.write(to: src.appendingPathComponent("nested/b.bin"))
+            fm.createFile(atPath: src.appendingPathComponent("nested/deeper/zero").path, contents: nil)
+            try fm.createSymbolicLink(
+                at: src.appendingPathComponent("linked"),
+                withDestinationURL: src.appendingPathComponent("a.txt")
+            )
+        } catch {
+            log("SFTP_FAIL 目录树构建失败 \(error)")
+            return false
+        }
+
+        await browser.upload(from: src)
+        await browser.refresh()
+        guard let remoteDir = browser.entries.first(where: { $0.name == stamp && $0.isDirectory }) else {
+            log("SFTP_FAIL 目录上传后未见 \(stamp),state=\(browser.state)")
+            return false
+        }
+
+        let downRoot = localRoot.appendingPathComponent("down", isDirectory: true)
+        try? fm.createDirectory(at: downRoot, withIntermediateDirectories: true)
+        await browser.download(remoteDir, to: downRoot)
+
+        let gotAlpha = (try? Data(contentsOf: downRoot.appendingPathComponent("a.txt"))) == alpha
+        let gotBlob = (try? Data(contentsOf: downRoot.appendingPathComponent("nested/b.bin"))) == blob
+        let zeroPath = downRoot.appendingPathComponent("nested/deeper/zero").path
+        let gotZero = fm.fileExists(atPath: zeroPath)
+            && (try? fm.attributesOfItem(atPath: zeroPath)[.size] as? UInt64) == 0
+        let linkSkipped = !fm.fileExists(atPath: downRoot.appendingPathComponent("linked").path)
+
+        // 远端清理:rmdir 不递归,走 shell
+        session.sendText("rm -rf ~/\(stamp)\n")
+        try? await Task.sleep(for: .milliseconds(600))
+
+        let ok = gotAlpha && gotBlob && gotZero && linkSkipped
+        if !ok {
+            log("SFTP_FAIL dirRoundtrip alpha=\(gotAlpha) blob=\(gotBlob) zero=\(gotZero) linkSkipped=\(linkSkipped)")
+        }
+        return ok
     }
 
     /// 服务端文件编辑验收:BERTH_SFTPEDIT_AUTOTEST=1。上传文件 → editRemotely(不启动编辑器)拉到本地

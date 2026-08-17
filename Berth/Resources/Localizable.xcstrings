@@ -12,7 +12,6 @@
       }
     },
     "%": {
-      "shouldTranslate": false,
       "localizations": {
         "en": {
           "stringUnit": {
@@ -20,7 +19,8 @@
             "value": "%"
           }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "%@ 文档与模型列表": {
       "localizations": {
@@ -224,6 +224,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld cores"
+          }
+        }
+      }
+    },
+    "%lld 项": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld items"
           }
         }
       }
@@ -556,7 +566,6 @@
       }
     },
     "CPU": {
-      "shouldTranslate": false,
       "localizations": {
         "en": {
           "stringUnit": {
@@ -564,7 +573,8 @@
             "value": "CPU"
           }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "CPU 温度": {
       "localizations": {
@@ -1224,7 +1234,6 @@
       "shouldTranslate": false
     },
     "—": {
-      "shouldTranslate": false,
       "localizations": {
         "en": {
           "stringUnit": {
@@ -1232,7 +1241,8 @@
             "value": "—"
           }
         }
-      }
+      },
+      "shouldTranslate": false
     },
     "→": {
       "localizations": {
@@ -1335,6 +1345,16 @@
         }
       }
     },
+    "上传 %@…(跳过 %lld 个符号链接)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uploading %@… (skipped %lld symlinks)"
+          }
+        }
+      }
+    },
     "上传到": {
       "localizations": {
         "en": {
@@ -1365,12 +1385,12 @@
         }
       }
     },
-    "上传文件": {
+    "上传文件或文件夹": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Upload Files"
+            "value": "Upload Files or Folders"
           }
         }
       }
@@ -1451,6 +1471,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Downloading %@…"
+          }
+        }
+      }
+    },
+    "下载 %@…(跳过 %lld 个符号链接)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Downloading %@… (skipped %lld symlinks)"
           }
         }
       }
@@ -1821,16 +1851,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dashboard display scale"
-          }
-        }
-      }
-    },
-    "显示比例": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Display Scale"
           }
         }
       }
@@ -3676,12 +3696,12 @@
         }
       }
     },
-    "已上传 %lld 个文件到 %@": {
+    "已上传 %lld 项到 %@": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uploaded %lld file(s) to %@"
+            "value": "Uploaded %lld item(s) to %@"
           }
         }
       }
@@ -4192,6 +4212,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Execute"
+          }
+        }
+      }
+    },
+    "扫描 %@…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning %@…"
           }
         }
       }
@@ -4787,6 +4817,16 @@
         }
       }
     },
+    "显示比例": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Display Scale"
+          }
+        }
+      }
+    },
     "显示输出": {
       "localizations": {
         "en": {
@@ -4833,16 +4873,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@ keys aren't supported yet. Berth supports ed25519 in OpenSSH format, and RSA in OpenSSH / PKCS#1 / PKCS#8 format."
-          }
-        }
-      }
-    },
-    "暂不支持上传文件夹,请拖入文件。": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Folders can't be uploaded yet — drop files instead."
           }
         }
       }
@@ -5513,6 +5543,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "No matching hosts"
+          }
+        }
+      }
+    },
+    "没有可上传的文件。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to upload."
           }
         }
       }

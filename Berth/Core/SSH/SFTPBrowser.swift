@@ -41,6 +41,27 @@ final class SFTPBrowser {
         var skippedSymlinks = 0
     }
 
+    /// 目录上传扫描时使用的轻量条目(issue #17),与下载侧对称,便于覆盖递归与符号链接边界
+    struct UploadTreeEntry: Equatable, Sendable {
+        enum Kind: Equatable, Sendable { case directory, file, symlink }
+        let name: String
+        let kind: Kind
+        let size: UInt64
+    }
+
+    struct UploadTreeFile: Equatable, Sendable {
+        let localURL: URL
+        let relativeComponents: [String]
+        let size: UInt64
+    }
+
+    struct DirectoryUploadPlan: Equatable, Sendable {
+        var directories: [[String]] = []
+        var files: [UploadTreeFile] = []
+        var totalBytes: UInt64 = 0
+        var skippedSymlinks = 0
+    }
+
     enum State: Equatable {
         case idle
         case loading
@@ -412,6 +433,126 @@ final class SFTPBrowser {
         return overflow ? .max : sum
     }
 
+    /// 上传前先扫描本地目录树(issue #17),与下载 plan 对称:符号链接不跟随,
+    /// 避免循环与把树外目标意外上传;list 可注入便于测试。
+    static func makeDirectoryUploadPlan(
+        localRoot: URL,
+        list: (_ url: URL) throws -> [UploadTreeEntry]
+    ) throws -> DirectoryUploadPlan {
+        var plan = DirectoryUploadPlan()
+
+        func scan(url: URL, relativeComponents: [String]) throws {
+            try Task.checkCancellation()
+            plan.directories.append(relativeComponents)
+            for entry in try list(url) {
+                let childURL = url.appendingPathComponent(entry.name)
+                let childComponents = relativeComponents + [entry.name]
+                switch entry.kind {
+                case .directory:
+                    try scan(url: childURL, relativeComponents: childComponents)
+                case .file:
+                    plan.files.append(UploadTreeFile(
+                        localURL: childURL,
+                        relativeComponents: childComponents,
+                        size: entry.size
+                    ))
+                    plan.totalBytes = saturatingAdd(plan.totalBytes, entry.size)
+                case .symlink:
+                    plan.skippedSymlinks += 1
+                }
+            }
+        }
+
+        try scan(url: localRoot, relativeComponents: [])
+        return plan
+    }
+
+    /// 生产用的本地目录列举:先判符号链接(symlink 指向目录时 isDirectory 会随目标为真,
+    /// 判断顺序反了就会跟着链接走);按名字排序保证顺序稳定。
+    static func listLocalDirectory(_ url: URL) throws -> [UploadTreeEntry] {
+        let contents = try FileManager.default.contentsOfDirectory(
+            at: url,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey],
+            options: []
+        )
+        return try contents.map { child in
+            let values = try child.resourceValues(
+                forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey]
+            )
+            let kind: UploadTreeEntry.Kind = values.isSymbolicLink == true
+                ? .symlink
+                : (values.isDirectory == true ? .directory : .file)
+            return UploadTreeEntry(
+                name: child.lastPathComponent,
+                kind: kind,
+                size: UInt64(clamping: values.fileSize ?? 0)
+            )
+        }
+        .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// 流式分块上传单个本地文件(大文件不整读进内存)。面板与终端拖拽共用。
+    @discardableResult
+    static func uploadLocalFile(
+        _ localURL: URL,
+        to remotePath: String,
+        sftp: SFTPClient,
+        onProgress: (_ copied: UInt64) -> Void = { _ in }
+    ) async throws -> UInt64 {
+        let handle = try FileHandle(forReadingFrom: localURL)
+        defer { try? handle.close() }
+        let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .truncate])
+        defer { Task { try? await file.close() } }
+
+        var offset: UInt64 = 0
+        while true {
+            try Task.checkCancellation()
+            guard let data = try handle.read(upToCount: chunkSize), !data.isEmpty else { break }
+            var buffer = ByteBufferAllocator().buffer(capacity: data.count)
+            buffer.writeBytes(data)
+            try await file.write(buffer, at: offset)
+            offset += UInt64(data.count)
+            onProgress(offset)
+        }
+        if offset == 0 {
+            // 空文件也要建出来
+            try await file.write(ByteBufferAllocator().buffer(capacity: 0), at: 0)
+        }
+        return offset
+    }
+
+    /// 递归上传整个目录:扫描出 plan → 建远端目录 → 逐文件流式上传。
+    /// createDirectory 的失败不当场报错(目录可能已存在,语义是合并);
+    /// 若确实建不出来,随后第一个文件写入会抛出更明确的错误。
+    static func performDirectoryUpload(
+        localRoot: URL,
+        remoteRoot: String,
+        sftp: SFTPClient,
+        onPlan: (DirectoryUploadPlan) -> Void = { _ in },
+        onProgress: (_ copied: UInt64, _ total: UInt64) -> Void = { _, _ in }
+    ) async throws {
+        let plan = try makeDirectoryUploadPlan(localRoot: localRoot, list: listLocalDirectory)
+        onPlan(plan)
+
+        for components in plan.directories {
+            try Task.checkCancellation()
+            let remote = components.reduce(remoteRoot) { $0 == "/" ? "/\($1)" : "\($0)/\($1)" }
+            try? await sftp.createDirectory(atPath: remote)
+        }
+
+        var completedBytes: UInt64 = 0
+        for item in plan.files {
+            try Task.checkCancellation()
+            let remote = item.relativeComponents.reduce(remoteRoot) { $0 == "/" ? "/\($1)" : "\($0)/\($1)" }
+            let base = completedBytes
+            let copied = try await uploadLocalFile(item.localURL, to: remote, sftp: sftp) { fileBytes in
+                onProgress(saturatingAdd(base, fileBytes), plan.totalBytes)
+            }
+            completedBytes = saturatingAdd(completedBytes, copied)
+        }
+        onProgress(completedBytes, plan.totalBytes)
+    }
+
     /// 持续读取直到服务端明确返回 0 字节。SFTP 单次 read 可以合法地返回少于请求长度的
     /// 数据(常见上限约几十 KB),短读不代表 EOF;把短读当 EOF 会让大文件只下载首个包。
     @discardableResult
@@ -433,32 +574,42 @@ final class SFTPBrowser {
         }
     }
 
+    /// 上传文件或整个目录(issue #17):目录先扫描再递归,文件流式分块不整读进内存
     func upload(from localURL: URL) async {
         guard let sftp else { return }
         let name = localURL.lastPathComponent
-        let transferID = beginTransfer(String(localized: "上传 \(name)…"))
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: localURL.path, isDirectory: &isDir)
+        let transferID = beginTransfer(isDir.boolValue
+            ? String(localized: "扫描 \(name)…")
+            : String(localized: "上传 \(name)…"))
         defer { endTransfer(transferID) }
         do {
-            let data = try Data(contentsOf: localURL)
-            let total = data.count
-            setTransfer(transferID, progress: total > 0 ? 0 : nil)
-            let file = try await sftp.openFile(
-                filePath: join(path, name),
-                flags: [.write, .create, .truncate]
-            )
-            defer { Task { try? await file.close() } }
-            var offset = 0
-            while offset < total {
-                let end = min(offset + Self.chunkSize, total)
-                var buffer = ByteBufferAllocator().buffer(capacity: end - offset)
-                buffer.writeBytes(data[offset..<end])
-                try await file.write(buffer, at: UInt64(offset))
-                offset = end
-                setTransfer(transferID, progress: Double(offset) / Double(total))
-            }
-            if total == 0 {
-                // 空文件也要建出来
-                try await file.write(ByteBufferAllocator().buffer(capacity: 0), at: 0)
+            if isDir.boolValue {
+                try await Self.performDirectoryUpload(
+                    localRoot: localURL,
+                    remoteRoot: join(path, name),
+                    sftp: sftp,
+                    onPlan: { plan in
+                        setTransfer(transferID, label: plan.skippedSymlinks > 0
+                            ? String(localized: "上传 \(name)…(跳过 \(plan.skippedSymlinks) 个符号链接)")
+                            : String(localized: "上传 \(name)…"))
+                        setTransfer(transferID, progress: plan.totalBytes > 0 ? 0 : nil)
+                    },
+                    onProgress: { copied, total in
+                        if total > 0 {
+                            setTransfer(transferID, progress: min(1, Double(copied) / Double(total)))
+                        }
+                    }
+                )
+            } else {
+                let size = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? UInt64) ?? 0
+                setTransfer(transferID, progress: size > 0 ? 0 : nil)
+                try await Self.uploadLocalFile(localURL, to: join(path, name), sftp: sftp) { copied in
+                    if size > 0 {
+                        setTransfer(transferID, progress: min(1, Double(copied) / Double(size)))
+                    }
+                }
             }
             await refresh()
         } catch {

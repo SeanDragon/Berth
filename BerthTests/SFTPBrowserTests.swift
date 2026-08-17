@@ -58,6 +58,76 @@ final class SFTPBrowserTests: XCTestCase {
         XCTAssertEqual(plan.skippedSymlinks, 1)
     }
 
+    func testDirectoryUploadPlanRecursesAndSkipsSymlinks() throws {
+        typealias Item = SFTPBrowser.UploadTreeEntry
+        let root = URL(fileURLWithPath: "/local/project")
+        let tree: [String: [Item]] = [
+            "/local/project": [
+                Item(name: "README.md", kind: .file, size: 12),
+                Item(name: "empty", kind: .directory, size: 0),
+                Item(name: "link", kind: .symlink, size: 8),
+                Item(name: "nested", kind: .directory, size: 0),
+            ],
+            "/local/project/empty": [],
+            "/local/project/nested": [
+                Item(name: "data.bin", kind: .file, size: 32),
+                Item(name: "deeper", kind: .directory, size: 0),
+            ],
+            "/local/project/nested/deeper": [
+                Item(name: "zero", kind: .file, size: 0),
+            ],
+        ]
+        var listedPaths: [String] = []
+
+        let plan = try SFTPBrowser.makeDirectoryUploadPlan(localRoot: root) { url in
+            listedPaths.append(url.path)
+            return tree[url.path] ?? []
+        }
+
+        XCTAssertEqual(listedPaths, [
+            "/local/project",
+            "/local/project/empty",
+            "/local/project/nested",
+            "/local/project/nested/deeper",
+        ])
+        XCTAssertEqual(plan.directories, [[], ["empty"], ["nested"], ["nested", "deeper"]])
+        XCTAssertEqual(plan.files.map(\.relativeComponents), [
+            ["README.md"],
+            ["nested", "data.bin"],
+            ["nested", "deeper", "zero"],
+        ])
+        XCTAssertEqual(plan.files.map(\.localURL.path), [
+            "/local/project/README.md",
+            "/local/project/nested/data.bin",
+            "/local/project/nested/deeper/zero",
+        ])
+        XCTAssertEqual(plan.totalBytes, 44)
+        XCTAssertEqual(plan.skippedSymlinks, 1)
+    }
+
+    /// 真实文件系统:symlink 指向目录时 isDirectory 会随目标为真,必须先判 symlink,
+    /// 否则会跟着链接把树外内容传上去(甚至循环)。
+    func testListLocalDirectoryClassifiesSymlinkBeforeDirectory() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("berth-upload-test-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let sub = root.appendingPathComponent("sub", isDirectory: true)
+        try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        try Data("hello".utf8).write(to: root.appendingPathComponent("a.txt"))
+        try FileManager.default.createSymbolicLink(
+            at: root.appendingPathComponent("dirlink"),
+            withDestinationURL: sub
+        )
+
+        let entries = try SFTPBrowser.listLocalDirectory(root)
+
+        XCTAssertEqual(entries.map(\.name), ["a.txt", "dirlink", "sub"])
+        XCTAssertEqual(entries.first { $0.name == "a.txt" }?.kind, .file)
+        XCTAssertEqual(entries.first { $0.name == "a.txt" }?.size, 5)
+        XCTAssertEqual(entries.first { $0.name == "dirlink" }?.kind, .symlink)
+        XCTAssertEqual(entries.first { $0.name == "sub" }?.kind, .directory)
+    }
+
     /// SFTP 服务端通常把大 read 拆成几十 KB 的短包;只有空包才是 EOF。
     func testChunkCopyContinuesAfterShortRead() async throws {
         let payload = Data((0..<200_000).map { UInt8($0 % 251) })
