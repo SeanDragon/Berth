@@ -173,9 +173,28 @@ struct TerminalTabsView: View {
                     panelButtons
                 }
                 .frame(maxWidth: .infinity)
-                .background(ToolbarStretchPin().frame(width: 1, height: 1))
+                .background(ToolbarStretchPin(
+                    overflowTabs: {
+                        sessionManager.tabs.map { tab in
+                            ToolbarStretchPin.OverflowTab(
+                                id: tab.id,
+                                title: overflowTabTitle(tab),
+                                isSelected: tab.id == sessionManager.selectedTabID
+                            )
+                        }
+                    },
+                    onSelectTab: { sessionManager.selectTab($0) }
+                ).frame(width: 1, height: 1))
             }
         }
+    }
+
+    /// » 溢出菜单里的标签名:与 chip 显示规则一致(自定义名 > 聚焦会话打码 label)
+    private func overflowTabTitle(_ tab: PaneTab) -> String {
+        if let custom = tab.customTitle, !custom.isEmpty { return custom }
+        return sessionManager.session(tab.focusedID)
+            .map { PrivacyMode.shared.maskHost(in: $0.spec.label, hostname: $0.spec.hostname) }
+            ?? String(localized: "终端")
     }
 
     /// 从系统侧栏按钮之后使用可用空间,多标签在其中横向滚动。
