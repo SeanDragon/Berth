@@ -118,13 +118,13 @@ struct SidebarView: View {
     /// 搜索框 + 新建主机
     private var header: some View {
         HStack(spacing: 6) {
-            HStack(spacing: 5) {
+            HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 11))
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
                 TextField("搜索主机", text: $searchText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 12.5))
+                    .font(.system(size: 13.5))
                     .onSubmit { connectSelectionOrFirst() }
                     .onKeyPress(.downArrow) { moveSelection(1); return .handled }
                     .onKeyPress(.upArrow) { moveSelection(-1); return .handled }
@@ -133,14 +133,14 @@ struct SidebarView: View {
                         searchText = ""
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                     }
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
             .background(
                 Capsule()
                     .fill(theme.elevatedBackground)
