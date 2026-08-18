@@ -1,7 +1,8 @@
 import SwiftData
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// iOS 密钥管理:生成 ed25519 / 粘贴导入 OpenSSH 私钥 / 复制公钥 / 删除。
+/// iOS 密钥管理:生成 ed25519 / 粘贴或从「文件」导入 OpenSSH 私钥 / 复制公钥 / 删除。
 /// 私钥只进 Keychain,与 Mac 版共用同一套 KeyStore。
 struct KeysListViewIOS: View {
     @Environment(\.dismiss) private var dismiss
@@ -16,6 +17,7 @@ struct KeysListViewIOS: View {
     @State private var importPassphrase = ""
     @State private var message: String?
     @State private var keyPendingDeletion: SSHKeyRecord?
+    @State private var isPickingFile = false
 
     var body: some View {
         NavigationStack {
@@ -131,12 +133,23 @@ struct KeysListViewIOS: View {
                         .font(.system(size: 11, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+                    Button {
+                        isPickingFile = true
+                    } label: {
+                        Label(String(localized: "从「文件」选择私钥…"), systemImage: "folder")
+                    }
                     SecureField(String(localized: "Passphrase(没有则不填)"), text: $importPassphrase)
                 }
                 .listRowBackground(theme.current.panelBackground)
                 if let message {
                     Text(message).font(.caption).foregroundStyle(.red)
                 }
+            }
+            .fileImporter(
+                isPresented: $isPickingFile,
+                allowedContentTypes: [.item]
+            ) { result in
+                if case .success(let url) = result { loadKeyFile(url) }
             }
             .scrollContentBackground(.hidden)
             .background(theme.current.sidebarBackground)
@@ -162,6 +175,28 @@ struct KeysListViewIOS: View {
                 context: modelContext
             )
             newKeyName = ""
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    /// 从「文件」读取私钥内容填入文本框(名称默认取文件名);私钥都很小,>64KB 直接拒绝
+    private func loadKeyFile(_ url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            let data = try Data(contentsOf: url)
+            guard data.count <= 64 * 1024 else {
+                message = String(localized: "文件过大,看起来不是私钥。")
+                return
+            }
+            guard let text = String(data: data, encoding: .utf8) else {
+                message = String(localized: "无法读取该文件:不是文本格式的私钥。")
+                return
+            }
+            importText = text
+            if newKeyName.isEmpty { newKeyName = url.lastPathComponent }
+            message = nil
         } catch {
             message = error.localizedDescription
         }

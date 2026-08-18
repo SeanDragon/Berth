@@ -3,6 +3,7 @@ import Crypto
 import Foundation
 import NIOCore
 import NIOSSH
+import UIKit
 
 /// iOS 终端会话:跳板链/代理/端口转发 + 密码/密钥库认证 + PTY 流。
 /// 与 Mac 端 TerminalSession 同构(不含分屏借用、Touch ID 门槛、本地 agent)。
@@ -24,6 +25,7 @@ final class IOSTerminalSession {
         case missingStoredKey
         case unsupportedKey
         case needsPassword
+        case notConnected
 
         var errorDescription: String? {
             switch self {
@@ -31,6 +33,7 @@ final class IOSTerminalSession {
             case .unsupportedAuth(let name): return String(localized: "iOS 版暂不支持「\(name)」认证方式")
             case .missingStoredKey: return String(localized: "找不到该主机引用的密钥,请在「密钥」页检查或重新选择。")
             case .unsupportedKey: return String(localized: "无法解析私钥文件:目前支持 OpenSSH 格式的 ed25519 / RSA 私钥。若密钥带 passphrase,请确认已正确填写。")
+            case .notConnected: return String(localized: "会话未连接")
             }
         }
     }
@@ -41,11 +44,16 @@ final class IOSTerminalSession {
     }
 
     private(set) var state: State = .idle
-    /// 首连/变更时等待用户决策的主机密钥信息
+    /// 首次/变更时等待用户决策的主机密钥信息
     var hostKeyPrompt: HostKeyPrompt?
     /// 端口转发状态(信息面板展示)
     private(set) var forwardStates: [UUID: PortForwardService.ForwardState] = [:]
     private(set) var connectedAt: Date?
+    /// 自动重连(指数退避,与 Mac 端同参:最多 8 次、封顶 30s);回前台立即重试
+    private(set) var reconnectAttempt = 0
+    private(set) var isAutoReconnectScheduled = false
+    /// 本次会话生命周期内是否成功连上过 —— 只有连上过的会话才自动重连
+    private(set) var everConnected = false
 
     /// 服务器输出回调(主线程),由终端视图订阅并 feed
     var onOutput: (([UInt8]) -> Void)?
@@ -61,9 +69,21 @@ final class IOSTerminalSession {
     private var hostKeyContinuation: CheckedContinuation<Bool, Never>?
     private var lastCols = 80
     private var lastRows = 24
+    private var reconnectTask: Task<Void, Never>?
+    private var userClosed = false
+    private var foregroundObserver: NSObjectProtocol?
 
     init(spec: HostSpec) {
         self.spec = spec
+        // iOS 后台会掐断 socket:回前台时若已掉线,立即重连(重置退避计数)
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.userClosed, self.everConnected else { return }
+                if case .failed = self.state { self.reconnectNow() }
+            }
+        }
     }
 
     var title: String { spec.label }
@@ -89,11 +109,32 @@ final class IOSTerminalSession {
     }
 
     func close() {
+        userClosed = true
+        reconnectTask?.cancel()
+        isAutoReconnectScheduled = false
+        if let foregroundObserver {
+            NotificationCenter.default.removeObserver(foregroundObserver)
+            self.foregroundObserver = nil
+        }
         sessionTask?.cancel()
         sessionTask = nil
         stdinWriter?.finish()
         teardown()
         if case .failed = state {} else { state = .closed }
+    }
+
+    /// 断线后重连:重开会话任务,终端视图与 scrollback 原地保留
+    func reconnectNow(resetAttempts: Bool = true) {
+        guard !userClosed else { return }
+        if resetAttempts { reconnectAttempt = 0 }
+        reconnectTask?.cancel()
+        isAutoReconnectScheduled = false
+        sessionTask?.cancel()
+        sessionTask = nil
+        stdinWriter?.finish()
+        stdinWriter = nil
+        teardown()
+        sessionTask = Task { await run(cols: lastCols, rows: lastRows) }
     }
 
     /// 主机密钥弹窗的用户决策回传
@@ -109,11 +150,8 @@ final class IOSTerminalSession {
         if save {
             try? KeychainStore.save(password, account: KeychainStore.passwordAccount(for: spec.hostID))
         }
-        sessionTask?.cancel()
-        sessionTask = nil
-        teardown()
         connectedAt = nil
-        sessionTask = Task { await run(cols: lastCols, rows: lastRows) }
+        reconnectNow()
     }
 
     // MARK: - 连接主流程
@@ -144,6 +182,8 @@ final class IOSTerminalSession {
                     _ = continuation.yield(.resize(cols: self.lastCols, rows: self.lastRows))
                     self.state = .connected
                     self.connectedAt = Date()
+                    self.everConnected = true
+                    self.reconnectAttempt = 0
                     self.startPortForwards()
                 }
 
@@ -182,6 +222,7 @@ final class IOSTerminalSession {
                     await MainActor.run { self.onOutput?(bytes) }
                 }
             }
+            // withPTY 正常返回 = 通道干净关闭,绝大多数是用户敲了 exit → 不自动重连
             state = .failed(String(localized: "连接已被服务器关闭"))
         } catch is CancellationError {
             state = .closed
@@ -193,8 +234,39 @@ final class IOSTerminalSession {
             state = .failed(error.localizedDescription)
         } catch {
             state = .failed(SSHErrorMapper.friendlyMessage(for: error, hostname: spec.hostname, port: spec.port, authMethod: spec.authMethod))
+            // 连上之后才掉的网络异常(reset/timeout/掉网…)→ 指数退避自动重连
+            if everConnected, Self.isNetworkDrop(error) { scheduleReconnect() }
         }
         teardown()
+    }
+
+    /// 判断错误是否网络掉线(与 Mac 端 isCleanShellExit 的关键词表同口径,取反义)
+    private static func isNetworkDrop(_ error: Error) -> Bool {
+        let s = String(describing: error).lowercased()
+        let networky = ["reset", "refused", "timed out", "timeout", "unreachable",
+                        "no route", "broken pipe", "not connected", "connection closed by",
+                        "handshake", "posix"]
+        return networky.contains(where: { s.contains($0) })
+    }
+
+    private func scheduleReconnect() {
+        guard !userClosed, reconnectAttempt < 8 else { return }
+        reconnectAttempt += 1
+        isAutoReconnectScheduled = true
+        let delay = min(pow(2.0, Double(reconnectAttempt - 1)), 30)
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled, self.isAutoReconnectScheduled else { return }
+            guard case .failed = self.state else { return }
+            self.reconnectNow(resetAttempts: false)
+        }
+    }
+
+    // MARK: - SFTP(复用同一连接开子通道)
+
+    func openSFTP() async throws -> SFTPClient {
+        guard let client else { throw IOSSessionError.notConnected }
+        return try await client.openSFTP()
     }
 
     private func teardown() {

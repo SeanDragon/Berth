@@ -290,6 +290,16 @@
         }
       }
     },
+    "/var/www": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "/var/www"
+          }
+        }
+      }
+    },
     "1 分钟": {
       "localizations": {
         "en": {
@@ -878,6 +888,16 @@
         }
       }
     },
+    "SFTP 出错": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP Error"
+          }
+        }
+      }
+    },
     "SFTP 操作失败:%@": {
       "localizations": {
         "en": {
@@ -904,6 +924,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "SFTP File Panel"
+          }
+        }
+      }
+    },
+    "SFTP 连接不可用": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP connection unavailable"
           }
         }
       }
@@ -1385,6 +1415,16 @@
         }
       }
     },
+    "上传文件…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload Files…"
+          }
+        }
+      }
+    },
     "上传文件或文件夹": {
       "localizations": {
         "en": {
@@ -1491,6 +1531,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Download…"
+          }
+        }
+      }
+    },
+    "下载并分享…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download & Share…"
           }
         }
       }
@@ -1715,6 +1765,16 @@
         }
       }
     },
+    "从「文件」选择私钥…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose Key from Files…"
+          }
+        }
+      }
+    },
     "代理": {
       "localizations": {
         "en": {
@@ -1871,6 +1931,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Session"
+          }
+        }
+      }
+    },
+    "会话未连接": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Session not connected"
           }
         }
       }
@@ -2576,6 +2646,16 @@
         }
       }
     },
+    "前往": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go"
+          }
+        }
+      }
+    },
     "动态 SOCKS5 (-D)": {
       "localizations": {
         "en": {
@@ -2942,6 +3022,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Upload failed"
+          }
+        }
+      }
+    },
+    "回到主目录": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Home"
           }
         }
       }
@@ -3642,6 +3732,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Export failed: %@"
+          }
+        }
+      }
+    },
+    "将自动重连(第 %lld 次)…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reconnecting automatically (attempt %lld)…"
           }
         }
       }
@@ -4476,12 +4576,32 @@
         }
       }
     },
+    "文件夹及其中所有内容将被删除,此操作不可撤销。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The folder and everything inside it will be deleted. This cannot be undone."
+          }
+        }
+      }
+    },
     "文件或目录不存在": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "File or directory does not exist"
+          }
+        }
+      }
+    },
+    "文件过大,看起来不是私钥。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File is too large to be a private key."
           }
         }
       }
@@ -4522,6 +4642,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "New Folder"
+          }
+        }
+      }
+    },
+    "新建文件夹…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Folder…"
           }
         }
       }
@@ -4753,6 +4883,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Unable to read server info"
+          }
+        }
+      }
+    },
+    "无法读取该文件:不是文本格式的私钥。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cannot read this file: it is not a text-format private key."
           }
         }
       }
@@ -5483,6 +5623,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Starting local shell…"
+          }
+        }
+      }
+    },
+    "正在打开 SFTP…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opening SFTP…"
           }
         }
       }
@@ -7077,6 +7227,26 @@
         }
       }
     },
+    "跳转到路径": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Path"
+          }
+        }
+      }
+    },
+    "跳转到路径…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to Path…"
+          }
+        }
+      }
+    },
     "跳过同名文件": {
       "localizations": {
         "en": {
@@ -7797,12 +7967,32 @@
         }
       }
     },
+    "重命名「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename “%@”"
+          }
+        }
+      }
+    },
     "重命名标签": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Rename Tab"
+          }
+        }
+      }
+    },
+    "重试": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retry"
           }
         }
       }

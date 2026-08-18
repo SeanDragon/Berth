@@ -112,7 +112,15 @@ BERTH_M1_AUTOTEST=1 BERTH_TRANSIENT_STORE=1 \
   - [x] 共享核心:Models/Storage/Parsing/SSH 层(HostSpec、KnownHosts、ProxyConnector、PortForwardService、KeyStore、TerminalTheme 已跨平台化,iOS 上 `typealias NSColor = UIColor`)
   - [x] 已具备:主机列表(分组/标签色/生产警戒)、完整主机编辑器(密码/密钥库认证、跳板机、HTTP/SOCKS5 代理、端口转发、启动命令)、SwiftTerm 终端(含按键条)、known_hosts 指纹确认、⚡ 快速连接(ssh 命令解析)、密钥管理(生成/导入)、Snippets({{变量}})、服务器信息面板、20 套主题、中英本地化
   - [x] 模拟器真机验收:连 127.0.0.1:2222 test sshd,建主机→指纹信任→shell 命令回显→信息面板全通
-  - [ ] 待补:SFTP 面板、自动重连、私钥文件导入(Files app)、TestFlight 分发签名
+  - [x] SFTP 面板(`SFTPSheetIOS`,与 Mac 共用 `SFTPBrowser` 核心——已跨平台化并加入 iOS
+    编译源):浏览/上传(Files app)/下载分享/重命名/删除/新建目录/路径跳转/文本预览/传输进度。
+    终端工具栏 📁 入口,复用会话连接开子通道。模拟器验收:连接→列目录→进目录→预览全通
+  - [x] 自动重连:连上过的会话网络掉线(reset/timeout 等关键词)指数退避重连(≤8 次、封顶
+    30s,与 Mac 同参);服务器干净关闭不自动重连;回前台立即重试(iOS 后台掐 socket);
+    断线卡片带「立即重连/关闭」,scrollback 原地保留。模拟器验收:重启 sshd → 卡片 → 重连成功
+  - [x] 私钥文件导入:密钥导入 sheet 增加「从『文件』选择私钥…」(fileImporter,
+    安全作用域读取,64KB 上限,文件名自动作密钥名),解析仍走共用 KeyStore/PrivateKeyFormat
+  - [ ] 待补:TestFlight 分发签名
 - [x] M5 — 布局与体验大改(已并入 main):
   - 布局:双栏(统一平铺主机列表侧栏 + 全宽终端),标题栏会话胶囊 + 标签 chips + 面板按钮组一行;应用图标(系缆桩)
   - 连接稳定性:分屏/⌘T **连接复用**(引用计数 SSHConnection,不新建 TCP);Citadel 补丁 #4(握手失败关 channel);频率惩罚(PerSourcePenalties)人话化;Keychain 稳定签名修复

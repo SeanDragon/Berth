@@ -1,4 +1,6 @@
+#if canImport(AppKit)
 import AppKit
+#endif
 import Citadel
 import Foundation
 import NIOCore
@@ -666,9 +668,11 @@ final class SFTPBrowser {
         let remotePath = join(path, entry.name)
         // 已在编辑:直接重开已有本地副本,不再重复下载/新建监听
         if editTasks[remotePath] != nil {
+            #if canImport(AppKit)
             if let existing = editLocalURLs[remotePath], openInEditor {
                 NSWorkspace.shared.open(existing)
             }
+            #endif
             return editLocalURLs[remotePath]
         }
 
@@ -688,7 +692,9 @@ final class SFTPBrowser {
                 try Data(buffer.readableBytesView).write(to: localURL)
                 await MainActor.run {
                     self?.editing[remotePath] = .idle
+                    #if canImport(AppKit)
                     if openInEditor { NSWorkspace.shared.open(localURL) }
+                    #endif
                 }
                 await self?.watchAndSync(localURL: localURL, remotePath: remotePath, sftp: sftp)
             } catch {

@@ -11,6 +11,7 @@ struct TerminalScreen: View {
     @State private var theme = ThemeStore.shared
     @State private var showSnippets = false
     @State private var showServerInfo = false
+    @State private var showSFTP = false
     @State private var passwordEntry = ""
     @State private var savePassword = true
     @FocusState private var passwordFocused: Bool
@@ -40,12 +41,19 @@ struct TerminalScreen: View {
                         .foregroundStyle(.red)
                 }
                 Button { showSnippets = true } label: { Image(systemName: "curlybraces") }
+                Button { showSFTP = true } label: { Image(systemName: "folder") }
+                    .disabled(!isConnected)
                 Button { showServerInfo = true } label: { Image(systemName: "info.circle") }
             }
         }
         .sheet(isPresented: $showSnippets) {
             SnippetsViewIOS { command in
                 session?.sendText(command + "\n")
+            }
+        }
+        .sheet(isPresented: $showSFTP) {
+            if let session {
+                SFTPSheetIOS(session: session)
             }
         }
         .sheet(isPresented: $showServerInfo) {
@@ -63,6 +71,11 @@ struct TerminalScreen: View {
         .onDisappear {
             session?.close()
         }
+    }
+
+    private var isConnected: Bool {
+        if case .connected = session?.state { return true }
+        return false
     }
 
     /// 终端键盘仅在已连接且无弹窗时显示;连接中/失败/指纹/补录密码期间收起,避免顶着模态框。
@@ -107,8 +120,21 @@ struct TerminalScreen: View {
                             .font(.footnote)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(theme.current.secondaryText)
-                        Button(String(localized: "关闭")) { dismiss() }
-                            .buttonStyle(.bordered)
+                        if session.isAutoReconnectScheduled {
+                            HStack(spacing: 8) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text(String(localized: "将自动重连(第 \(session.reconnectAttempt) 次)…"))
+                                    .font(.caption)
+                                    .foregroundStyle(theme.current.secondaryText)
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            Button(String(localized: "立即重连")) { session.reconnectNow() }
+                                .buttonStyle(.borderedProminent)
+                            Button(String(localized: "关闭")) { dismiss() }
+                                .buttonStyle(.bordered)
+                        }
                     }
                     .padding(24)
                     .frame(maxWidth: 340)
