@@ -18,6 +18,11 @@ struct TerminalTabsView: View {
     /// 调试开关:在 macOS 26+ 上强制走 15 的工具条路径,方便本机复现/验收 issue #14
     private static let forcesLegacyChrome =
         ProcessInfo.processInfo.environment["BERTH_LEGACY_CHROME"] == "1"
+    /// 26+ 现代工具条(Liquid Glass):标签轨道等视觉只在这条路径生效
+    static let modernChrome: Bool = {
+        if #available(macOS 26.0, *) { return !forcesLegacyChrome }
+        return false
+    }()
 
     var body: some View {
         @Bindable var manager = sessionManager
@@ -252,11 +257,14 @@ struct TerminalTabsView: View {
             }
             newTabMenu
         }
-        .padding(2)
+        // 轨道垫到 36pt(chip 25pt + 上下 5.5)对齐系统工具栏控件高度——
+        // 右侧玻璃按钮簇实测 36pt,矮一截会显得两头不齐(仅 26+;15 无轨道不加高)
+        .padding(.horizontal, 4)
+        .padding(.vertical, Self.modernChrome ? 5.5 : 2)
         // 标签条整体一条浅色轨道底(分段控件式),选中玻璃浮在轨道上;
         // 15 的 chips 各自带描边,不再叠轨道
         .background {
-            if #available(macOS 26.0, *) {
+            if Self.modernChrome {
                 Capsule().fill(Color.primary.opacity(0.06))
             }
         }
