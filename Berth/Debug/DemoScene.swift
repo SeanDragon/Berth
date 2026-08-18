@@ -21,29 +21,51 @@ enum DemoScene {
         let outDir = URL(fileURLWithPath: dir, isDirectory: true)
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
-        // 侧栏演示主机(除 atlas-01 外均为摆设,不发起连接)
+        // 侧栏演示主机。默认除 atlas-01 外均为摆设;若给了 BERTH_DEMO_PORTS
+        // (如 "2231,2232,2233,2234"),陪衬主机按序指向本地这些端口,全部可真连
+        // (user 顺序 ops/ops/admin/ci,密码同 BERTH_TEST_PASSWORD)—— 仪表盘
+        // 截图要所有卡片在线时用
+        let demoPorts = (env["BERTH_DEMO_PORTS"] ?? "")
+            .split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
         let context = ModelContext(container)
         let real = Host(label: "atlas-01", hostname: hostAddr, port: port, username: user, tagColor: .blue)
         real.osName = "Alpine Linux"
         context.insert(real)
+        var connectableIDs = [real.id]
 
         let extras: [(String, String, String, TagColor, String)] = [
             ("atlas-staging", "staging.internal", "ops", .orange, "Ubuntu 24.04"),
             ("edge-gateway", "edge.internal", "ops", .blue, "Debian 12"),
-            ("pve-lab", "pve.lab", "root", .green, "Proxmox VE"),
+            ("pve-lab", "pve.lab", "admin", .green, "Proxmox VE"),
             ("build-runner", "runner.lab", "ci", .purple, "Ubuntu 24.04"),
         ]
         for (index, entry) in extras.enumerated() {
-            let host = Host(label: entry.0, hostname: entry.1, port: 22, username: entry.2,
+            let connectable = index < demoPorts.count
+            let host = Host(label: entry.0,
+                            hostname: connectable ? hostAddr : entry.1,
+                            port: connectable ? demoPorts[index] : 22,
+                            username: entry.2,
                             tagColor: entry.3, sortOrder: index + 1)
             host.osName = entry.4
             context.insert(host)
+            if connectable { connectableIDs.append(host.id) }
         }
 
         do {
-            try KeychainStore.save(password, account: KeychainStore.passwordAccount(for: real.id))
+            for id in connectableIDs {
+                try KeychainStore.save(password, account: KeychainStore.passwordAccount(for: id))
+            }
             try context.save()
         } catch { return }
+
+        // 场景机密不留真实 Keychain:退出时统一清理(仪表盘运行期间要自建连接,
+        // 不能像单主机场景那样连上就删)
+        let seededIDs = connectableIDs
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { _ in
+            for id in seededIDs { KeychainStore.deleteSecrets(for: id) }
+        }
 
         let manager = SessionManager.shared
         let session = manager.open(spec: HostSpec(host: real))
@@ -74,12 +96,10 @@ enum DemoScene {
         }
         try? "ready".write(to: outDir.appendingPathComponent("READY"), atomically: true, encoding: .utf8)
         startCommandLoop(outDir: outDir, manager: manager, primarySession: session)
-
-        // 密码只为本场景服务,不留在真实 Keychain
-        KeychainStore.deleteSecrets(for: real.id)
     }
 
-    /// 轮询 cmd.txt:files-on/sftp-on/sftp-off/inspector-on/inspector-off/palette/snap <名字>
+    /// 轮询 cmd.txt:files-on/sftp-on/sftp-off/inspector-on/inspector-off/
+    /// dashboard-on/dashboard-off/palette/snap <名字>
     private static func startCommandLoop(outDir: URL, manager: SessionManager, primarySession: TerminalSession) {
         let cmdFile = outDir.appendingPathComponent("cmd.txt")
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
@@ -102,6 +122,8 @@ enum DemoScene {
                 case "sftp-off": manager.isSFTPVisible = false
                 case "inspector-on": manager.isInspectorVisible = true
                 case "inspector-off": manager.isInspectorVisible = false
+                case "dashboard-on": manager.isDashboardVisible = true
+                case "dashboard-off": manager.isDashboardVisible = false
                 case "palette": CommandPaletteController.shared.toggle()
                 default:
                     if cmd.hasPrefix("snap ") {
