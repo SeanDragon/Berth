@@ -154,10 +154,10 @@ struct TerminalTabsView: View {
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarSpacer(.flexible)
+        // 按钮组不再藏系统底:交还 Liquid Glass 胶囊簇(Tahoe 原生工具栏观感)
         ToolbarItem(placement: .automatic) {
             if !sessionManager.tabs.isEmpty { panelButtons }
         }
-        .sharedBackgroundVisibility(.hidden)
     }
 
     /// macOS 15:没有 ToolbarSpacer,合成单个 item 走 Xcode 式「可伸缩中区」——
@@ -190,36 +190,9 @@ struct TerminalTabsView: View {
     /// 「+」新建菜单跟在最后一个 chip 后(Chrome 式),随标签一起滚动
     private var tabChips: some View {
         ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Self.chipSpacing) {
-                    ForEach(sessionManager.tabs) { tab in
-                        TerminalTabChip(
-                            tab: tab,
-                            focusedSession: sessionManager.session(tab.focusedID),
-                            paneCount: tab.root.leafIDs().count,
-                            isSelected: tab.id == sessionManager.selectedTabID,
-                            select: { sessionManager.selectTab(tab.id) },
-                            close: { sessionManager.requestCloseTab(tab) },
-                            onDragChanged: { chipDragChanged(tab, deltaX: $0) },
-                            onDragEnded: { chipDragEnded(tab) }
-                        )
-                        .offset(x: draggingChip == tab.id ? dragOffset : 0)
-                        .zIndex(draggingChip == tab.id ? 1 : 0)
-                        .onGeometryChange(for: CGRect.self) { proxy in
-                            proxy.frame(in: .named(Self.chipTrackSpace))
-                        } action: { chipFrames[tab.id] = $0 }
-                        .id(tab.id)
-                    }
-                    newTabMenu
-                }
-                // 拖拽中交换即时生效(跟手),松手后的归位走 spring
-                .animation(
-                    draggingChip == nil ? .spring(response: 0.25, dampingFraction: 0.9) : nil,
-                    value: sessionManager.tabs.map(\.id)
-                )
-                .coordinateSpace(name: Self.chipTrackSpace)
-                .padding(.horizontal, 10)
-            }
+            // 注意不能用 GlassEffectContainer 包 chips:容器会把玻璃合并抬到
+            // 独立层、压在文字上方,标签文字被折射得看不清(26.0 实测)
+            ScrollView(.horizontal, showsIndicators: false) { chipTrack }
             .frame(maxWidth: .infinity, alignment: .leading)
             .mask(
                 HStack(spacing: 0) {
@@ -235,6 +208,48 @@ struct TerminalTabsView: View {
                 withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(selected, anchor: .center) }
             }
         }
+    }
+
+    /// chips 轨道
+    private var chipTrack: some View {
+        HStack(spacing: Self.chipSpacing) {
+            ForEach(sessionManager.tabs) { tab in
+                TerminalTabChip(
+                    tab: tab,
+                    focusedSession: sessionManager.session(tab.focusedID),
+                    paneCount: tab.root.leafIDs().count,
+                    isSelected: tab.id == sessionManager.selectedTabID,
+                    select: { sessionManager.selectTab(tab.id) },
+                    close: { sessionManager.requestCloseTab(tab) },
+                    onDragChanged: { chipDragChanged(tab, deltaX: $0) },
+                    onDragEnded: { chipDragEnded(tab) }
+                )
+                .offset(x: draggingChip == tab.id ? dragOffset : 0)
+                .zIndex(draggingChip == tab.id ? 1 : 0)
+                .onGeometryChange(for: CGRect.self) { proxy in
+                    proxy.frame(in: .named(Self.chipTrackSpace))
+                } action: { chipFrames[tab.id] = $0 }
+                .id(tab.id)
+            }
+            newTabMenu
+        }
+        .padding(2)
+        // 标签条整体一条浅色轨道底(分段控件式),选中玻璃浮在轨道上;
+        // 15 的 chips 各自带描边,不再叠轨道
+        .background {
+            if #available(macOS 26.0, *) {
+                Capsule().fill(Color.primary.opacity(0.06))
+            }
+        }
+        // 拖拽中交换即时生效(跟手),松手后的归位走 spring
+        .animation(
+            draggingChip == nil ? .spring(response: 0.25, dampingFraction: 0.9) : nil,
+            value: sessionManager.tabs.map(\.id)
+        )
+        // 选中态迁移带轻动画(浮起材质淡入淡出;终端内容不参与)
+        .animation(.easeInOut(duration: 0.22), value: sessionManager.selectedTabID)
+        .coordinateSpace(name: Self.chipTrackSpace)
+        .padding(.horizontal, 10)
     }
 
     // MARK: - chip 拖拽重排(AppKit 事件层驱动,新老系统一致)
@@ -377,11 +392,20 @@ struct TerminalTabsView: View {
         }
         .padding(.horizontal, 4)
         .padding(.vertical, 2)
-        .background(
-            Capsule()
-                .fill(ThemeStore.shared.current.elevatedBackground)
-                .overlay(Capsule().stroke(ThemeStore.shared.current.borderColor, lineWidth: 1))
-        )
+        .background {
+            // 26+ 系统工具栏玻璃已经是按钮簇的底,再自绘就叠两层
+            if Self.drawsOwnButtonCluster {
+                Capsule()
+                    .fill(ThemeStore.shared.current.elevatedBackground)
+                    .overlay(Capsule().stroke(ThemeStore.shared.current.borderColor, lineWidth: 1))
+            }
+        }
+    }
+
+    /// macOS 15 / 强制 legacy:按钮簇底自绘;26+ 交给系统 Liquid Glass
+    private static var drawsOwnButtonCluster: Bool {
+        if #available(macOS 26.0, *) { return forcesLegacyChrome }
+        return true
     }
 
     /// 广播模式横幅:提示所有分屏同步接收键入
@@ -661,17 +685,22 @@ private struct TerminalTabChip: View {
         }
         .padding(.horizontal, 11)
         .padding(.vertical, 5)
-        // 选中 = 浮起材质(与侧栏选中行同一块料),不再用强调色水洗;
-        // 未选中给 1pt 发丝描边,标出胶囊轮廓(拖拽重排的把手感)
+        // 选中 = 浮起材质(与侧栏选中行同一块料,26+ 即 Liquid Glass),不用强调色水洗。
+        // macOS 26+ 未选中不再描边(Safari 26 式安静标签),悬停给淡玻璃;
+        // macOS 15 保留 1pt 发丝描边(拖拽重排的把手感)
         .background {
             if isSelected {
                 RaisedCapsule()
             } else if isHovering {
-                Capsule().fill(Color.primary.opacity(0.05))
+                if #available(macOS 26.0, *) {
+                    Color.clear.glassEffect(.regular, in: .capsule)
+                } else {
+                    Capsule().fill(Color.primary.opacity(0.05))
+                }
             }
         }
         .overlay {
-            if !isSelected {
+            if !isSelected, #unavailable(macOS 26.0) {
                 Capsule().strokeBorder(ThemeStore.shared.current.borderColor, lineWidth: 1)
             }
         }
