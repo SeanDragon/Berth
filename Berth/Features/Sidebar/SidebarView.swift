@@ -462,8 +462,8 @@ struct SidebarView: View {
     }
 }
 
-/// 主机行(Termite 同款设计语言):13pt 标题 + 10pt 等宽副标题,
-/// 尾部状态点(连接态 > 可达性 > 标签色);选中 = 浮起材质,不用强调色水洗
+/// 主机行(Termite 同款设计语言):图标列 + 状态竖条 + 13pt 标题 + 10pt 等宽副标题
+/// (竖条:连接态 > 可达性 > 标签色);选中 = 浮起材质,不用强调色水洗
 private struct HostRow: View {
     let host: Host
     var isSelected = false
@@ -474,7 +474,23 @@ private struct HostRow: View {
     @State private var reachability = HostReachability.shared
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 8) {
+            // Finder 式图标列:固定宽度对齐成列
+            OSBadge(osName: host.osName)
+                .frame(width: 20)
+            // 状态竖条:连接态 > 可达性 > 标签色,连接中带辉光
+            RoundedRectangle(cornerRadius: 1.5)
+                .fill(barColor)
+                .frame(width: 3, height: 26)
+                .shadow(
+                    color: {
+                        if case .connected = sessionManager.liveState(for: host.id) {
+                            return Color.green.opacity(0.6)
+                        }
+                        return .clear
+                    }(),
+                    radius: 3
+                )
             VStack(alignment: .leading, spacing: 1.5) {
                 Text(PrivacyMode.shared.maskHost(in: host.label, hostname: host.hostname))
                     .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
@@ -493,7 +509,6 @@ private struct HostRow: View {
                     .foregroundStyle(.quaternary)
                     .help("来自 ~/.ssh/config(只读)")
             }
-            statusDot
         }
         .padding(.vertical, 5)
         .padding(.horizontal, 8)
@@ -512,27 +527,17 @@ private struct HostRow: View {
         .help("\(PrivacyMode.shared.maskHost(in: host.address, hostname: host.hostname))\(host.lastConnectedAt.map { String(localized: " · 最近连接 ") + $0.formatted(.relative(presentation: .named)) } ?? "")")
     }
 
-    /// 尾部状态点:连接态 > 可达性 > 标签色;全无信息时不显示,列表保持安静
-    @ViewBuilder
-    private var statusDot: some View {
+    /// 竖条颜色:连接态 > 可达性 > 标签色;全无信息时回落淡灰
+    private var barColor: Color {
         switch sessionManager.liveState(for: host.id) {
-        case .connected:
-            Circle().fill(Color.green)
-                .frame(width: 6, height: 6)
-                .shadow(color: Color.green.opacity(0.6), radius: 3)
-        case .connecting:
-            Circle().fill(Color.yellow)
-                .frame(width: 6, height: 6)
+        case .connected: return .green
+        case .connecting: return .yellow
         case .none:
             switch reachability.statuses[host.id] {
-            case .reachable:
-                Circle().fill(Color.green.opacity(0.5)).frame(width: 5, height: 5)
-            case .unreachable:
-                Circle().fill(Color.red.opacity(0.45)).frame(width: 5, height: 5)
+            case .reachable: return Color.green.opacity(0.5)
+            case .unreachable: return Color.red.opacity(0.4)
             case .unknown, nil:
-                if host.tagColor != .none {
-                    Circle().fill(host.tagColor.color.opacity(0.6)).frame(width: 5, height: 5)
-                }
+                return host.tagColor == .none ? Color.gray.opacity(0.18) : host.tagColor.color.opacity(0.45)
             }
         }
     }
