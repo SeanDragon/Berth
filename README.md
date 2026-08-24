@@ -32,7 +32,7 @@ Berth is a Swift-native SSH client for macOS. It keeps the directness of a termi
 | Connections | Password, private-key, ssh-agent, and keyboard-interactive authentication; ssh_config import, jump hosts, and HTTP/SOCKS5 proxies. |
 | Networking | Local, remote, and dynamic SOCKS5 port forwarding for temporary debugging and private-network access. |
 | SFTP file panel | Browse, upload, download, preview, and edit through the active SSH connection; drag files in either direction and download folders recursively. |
-| Server visibility | CPU, memory, disk, network, and load in the dashboard; inspect Docker container state and logs. |
+| Server visibility | CPU, memory, disk, network, and load in the dashboard; inspect Docker or Podman container state and logs. |
 | AI assistant | Analyze the current terminal context, propose or run commands, render Markdown including tables, and keep command approval configurable. |
 
 ## Keyboard first
