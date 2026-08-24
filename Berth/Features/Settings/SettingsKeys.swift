@@ -37,6 +37,8 @@ enum SettingsKeys {
     static let aiAPIFormat = "ai.apiFormat"
     /// 本地 Shell 路径(空 = 登录 shell;macOS 本地终端会话用)
     static let localShellPath = "terminal.localShellPath"
+    /// SFTP 双击编辑远端文件时用的本地编辑器 .app 路径(空 = 系统默认应用)
+    static let externalEditorPath = "sftp.externalEditorPath"
     /// 自动检查更新(GitHub Releases API,默认开)
     static let autoCheckUpdates = "app.autoCheckUpdates"
     /// 用户选择跳过的版本号(该版本不再提示,新版本会重新提示)

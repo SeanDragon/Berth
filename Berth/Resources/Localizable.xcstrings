@@ -938,6 +938,16 @@
         }
       }
     },
+    "SFTP 面板双击远端文件时,下载到本地临时目录后用来打开的应用。留空则使用 macOS 为该文件类型指定的默认应用。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The app used to open a remote file after the SFTP panel downloads it to a local temp folder on double-click. Leave empty to use the default app macOS assigns to that file type."
+          }
+        }
+      }
+    },
     "SOCKS 代理无可接受的认证方式": {
       "localizations": {
         "en": {
@@ -2021,6 +2031,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Use keys loaded in the system ssh-agent (ed25519 / RSA). Load a key with ssh-add and you're set."
+          }
+        }
+      }
+    },
+    "使用系统默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use System Default"
           }
         }
       }
@@ -5767,6 +5787,16 @@
         }
       }
     },
+    "没能定位到终端当前目录(远端可能没有 /proc 或权限受限)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not locate the terminal's current directory (the remote may lack /proc, or access is restricted)"
+          }
+        }
+      }
+    },
     "活跃会话": {
       "localizations": {
         "en": {
@@ -6497,6 +6527,16 @@
         }
       }
     },
+    "系统默认": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System Default"
+          }
+        }
+      }
+    },
     "紫": {
       "localizations": {
         "en": {
@@ -7197,6 +7237,16 @@
         }
       }
     },
+    "跳到终端当前目录(未启用命令集成,点击时现探测一次)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jump to the terminal's current directory (command integration isn't enabled — this probes for it on click)"
+          }
+        }
+      }
+    },
     "跳到终端当前目录:%@": {
       "localizations": {
         "en": {
@@ -7583,6 +7633,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remote (-R)"
+          }
+        }
+      }
+    },
+    "远程文件编辑": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remote File Editing"
           }
         }
       }

@@ -44,6 +44,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
     @AppStorage(SettingsKeys.autoCheckUpdates) private var autoCheckUpdates = true
     @AppStorage(SettingsKeys.localShellPath) private var localShellPath = ""
+    @AppStorage(SettingsKeys.externalEditorPath) private var externalEditorPath = ""
     @AppStorage(SettingsKeys.translucentChrome) private var translucentChrome = true
     @State private var aiProviderID = AIProvider.all[0].id
     @State private var aiModelIsCustom = false
@@ -182,6 +183,36 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section("远程文件编辑") {
+                HStack {
+                    Text(externalEditorDisplayName)
+                        .foregroundStyle(externalEditorPath.isEmpty ? .secondary : .primary)
+                    Spacer()
+                    if !externalEditorPath.isEmpty {
+                        Button("使用系统默认") { externalEditorPath = "" }
+                    }
+                    Button("选择…") { chooseExternalEditor() }
+                }
+                Text("SFTP 面板双击远端文件时,下载到本地临时目录后用来打开的应用。留空则使用 macOS 为该文件类型指定的默认应用。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+    }
+
+    private var externalEditorDisplayName: String {
+        guard !externalEditorPath.isEmpty else { return String(localized: "系统默认") }
+        return FileManager.default.displayName(atPath: externalEditorPath)
+    }
+
+    private func chooseExternalEditor() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.application]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            externalEditorPath = url.path
+        }
     }
 
     @ViewBuilder

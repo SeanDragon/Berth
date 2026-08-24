@@ -653,6 +653,22 @@ final class SFTPBrowser {
 
     // MARK: - 服务端文件编辑(下载 → 本地编辑器 → 保存自动回传)
 
+    /// 用设置里指定的编辑器打开本地临时副本;未指定(或指定的 app 已不存在)则退回
+    /// LaunchServices 默认应用,与之前行为一致。
+    private static func openWithPreferredEditor(_ url: URL) {
+        #if canImport(AppKit)
+        let customPath = UserDefaults.standard.string(forKey: SettingsKeys.externalEditorPath) ?? ""
+        if !customPath.isEmpty {
+            let editorURL = URL(fileURLWithPath: customPath)
+            if FileManager.default.fileExists(atPath: customPath) {
+                NSWorkspace.shared.open([url], withApplicationAt: editorURL, configuration: NSWorkspace.OpenConfiguration())
+                return
+            }
+        }
+        NSWorkspace.shared.open(url)
+        #endif
+    }
+
     /// 正在编辑中的远端文件(远端绝对路径 → 状态),供 UI 显示角标
     private(set) var editing: [String: EditState] = [:]
     enum EditState: Equatable { case syncing, idle, failed }
@@ -668,11 +684,9 @@ final class SFTPBrowser {
         let remotePath = join(path, entry.name)
         // 已在编辑:直接重开已有本地副本,不再重复下载/新建监听
         if editTasks[remotePath] != nil {
-            #if canImport(AppKit)
             if let existing = editLocalURLs[remotePath], openInEditor {
-                NSWorkspace.shared.open(existing)
+                Self.openWithPreferredEditor(existing)
             }
-            #endif
             return editLocalURLs[remotePath]
         }
 
@@ -692,9 +706,7 @@ final class SFTPBrowser {
                 try Data(buffer.readableBytesView).write(to: localURL)
                 await MainActor.run {
                     self?.editing[remotePath] = .idle
-                    #if canImport(AppKit)
-                    if openInEditor { NSWorkspace.shared.open(localURL) }
-                    #endif
+                    if openInEditor { Self.openWithPreferredEditor(localURL) }
                 }
                 await self?.watchAndSync(localURL: localURL, remotePath: remotePath, sftp: sftp)
             } catch {

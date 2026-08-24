@@ -21,6 +21,8 @@ struct SFTPPanelView: View {
     @State private var chmodMode: UInt32 = 0
     @State private var previewEntry: SFTPBrowser.Entry?
     @State private var previewText: String?
+    @State private var isLocatingTerminalDir = false
+    @State private var terminalDirProbeFailed = false
 
     private var theme: TerminalTheme { ThemeStore.shared.current }
 
@@ -79,10 +81,51 @@ struct SFTPPanelView: View {
         }
     }
 
+    private var jumpToTerminalDirHelp: String {
+        if terminalDirProbeFailed {
+            return String(localized: "没能定位到终端当前目录(远端可能没有 /proc 或权限受限)")
+        }
+        guard let dir = session.currentRemoteDirectory else {
+            return String(localized: "跳到终端当前目录(未启用命令集成,点击时现探测一次)")
+        }
+        return String(format: String(localized: "跳到终端当前目录:%@"), dir)
+    }
+
+    /// OSC 7 报过 cwd 直接跳;没报过(未装命令集成)就现探一次 /proc/<pid>/cwd —
+    /// 复用 AI 助手同款兜底(TerminalSession.probeRemoteWorkingDirectories),零配置。
+    private func jumpToTerminalDirectory() {
+        if let dir = session.currentRemoteDirectory {
+            Task { await browser?.navigate(to: dir) }
+            return
+        }
+        guard !isLocatingTerminalDir else { return }
+        isLocatingTerminalDir = true
+        terminalDirProbeFailed = false
+        Task {
+            let candidates = await session.probeRemoteWorkingDirectories()
+            isLocatingTerminalDir = false
+            if let dir = candidates.first {
+                await browser?.navigate(to: dir)
+            } else {
+                terminalDirProbeFailed = true
+                try? await Task.sleep(for: .seconds(2))
+                terminalDirProbeFailed = false
+            }
+        }
+    }
+
     private var header: some View {
         PanelHeader(title: String(localized: "文件")) {
             PanelIconButton(symbol: "folder.badge.plus", help: String(localized: "新建文件夹")) { creatingDir = true }
             PanelIconButton(symbol: "square.and.arrow.up", help: String(localized: "上传文件或文件夹")) { uploadPick() }
+            PanelIconButton(
+                symbol: "location.circle",
+                help: jumpToTerminalDirHelp,
+                spinning: isLocatingTerminalDir,
+                tint: terminalDirProbeFailed ? .orange : nil
+            ) {
+                jumpToTerminalDirectory()
+            }
             PanelIconButton(symbol: "arrow.clockwise", help: String(localized: "刷新")) { Task { await browser?.refresh() } }
             PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
         }
@@ -134,20 +177,6 @@ struct SFTPPanelView: View {
                     .help(String(localized: "点按输入路径(支持 ~ 与相对路径)"))
             }
             Spacer()
-            // 跟随终端:面板停在别处时,一键跳回该 pane 的当前目录。
-            // 仅 ready 时显示:失败/加载中点了也只会在 guard let sftp 上无声打空
-            if browser?.state == .ready,
-               let terminalDir = session.currentRemoteDirectory, terminalDir != browser?.path {
-                Button {
-                    Task { await browser?.navigate(to: terminalDir) }
-                } label: {
-                    Image(systemName: "location.circle")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("跳到终端当前目录:\(terminalDir)")
-            }
             // 书签菜单
             Menu {
                 Button(browser?.isCurrentBookmarked == true ? "取消收藏此目录" : "收藏此目录") {
