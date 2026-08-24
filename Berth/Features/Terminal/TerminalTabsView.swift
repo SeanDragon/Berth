@@ -119,6 +119,7 @@ struct TerminalTabsView: View {
                 }
                 manager.pendingCloseSession = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("取消", role: .cancel) { manager.pendingCloseSession = nil }
         } message: {
             Text(sessionManager.pendingCloseSession?.spec.isLocal == true
@@ -138,6 +139,7 @@ struct TerminalTabsView: View {
                 }
                 manager.pendingCloseTab = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("取消", role: .cancel) { manager.pendingCloseTab = nil }
         } message: {
             Text({
