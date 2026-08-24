@@ -1,20 +1,29 @@
 import Foundation
 
-/// 远端 Docker 状态快照(inspector 展示,经 exec 通道采集)。
+/// 远端 Docker/Podman 状态快照(inspector 展示,经 exec 通道采集)。
 /// 一期只读:容器列表 + compose 分组;不做操作类(启停/日志)。
 struct DockerStatus: Equatable {
 
+    enum Runtime: String, Equatable {
+        case docker
+        case podman
+
+        var executable: String { rawValue }
+        var displayName: String { rawValue.capitalized }
+    }
+
     enum Availability: Equatable {
         case available
-        /// 主机没装 docker —— inspector 整段不显示,不打扰无关用户
+        /// 主机没装 Docker 或 Podman —— inspector 整段不显示,不打扰无关用户
         case notInstalled
-        /// CLI 在但访问被拒(典型:当前用户不在 docker 组)
+        /// 运行时 CLI 在但访问被拒
         case permissionDenied
-        /// daemon 没起来或 socket 不可达
+        /// Docker/Podman 服务没起来或 socket 不可达
         case daemonUnreachable(String)
     }
 
     var availability: Availability = .notInstalled
+    var runtime: Runtime = .docker
     var containers: [DockerContainer] = []
 
     var runningCount: Int { containers.filter(\.isRunning).count }
@@ -35,18 +44,45 @@ struct DockerStatus: Equatable {
     }
 
     /// 采集脚本:保证 exit 0(Citadel executeCommand 对非零退出会抛错),
-    /// docker 的报错经 2>&1 收进正文由解析器分类。
+    /// 两个运行时的报错经 2>&1 收进正文由解析器分类。
     static let collectionScript = """
-    if ! command -v docker >/dev/null 2>&1; then
+    docker_error=""
+    podman_error=""
+    docker_candidate=0
+    podman_candidate=0
+
+    if command -v docker >/dev/null 2>&1; then
+      docker_candidate=1
+      docker_version=$(docker --version 2>&1)
+      if printf '%s' "$docker_version" | grep -qi podman && command -v podman >/dev/null 2>&1; then
+        docker_candidate=0
+      fi
+    fi
+    if command -v podman >/dev/null 2>&1; then podman_candidate=1; fi
+
+    if [ "$docker_candidate" -eq 1 ]; then
+      out=$(docker ps -a --no-trunc --format '{{json .}}' 2>&1)
+      if [ $? -eq 0 ]; then
+        printf 'DOCKER_STATE=ok\\nDOCKER_RUNTIME=docker\\n%s\\n' "$out"
+        exit 0
+      fi
+      docker_error="$out"
+    fi
+
+    if [ "$podman_candidate" -eq 1 ]; then
+      out=$(podman ps -a --no-trunc --format '{{json .}}' 2>&1)
+      if [ $? -eq 0 ]; then
+        printf 'DOCKER_STATE=ok\\nDOCKER_RUNTIME=podman\\n%s\\n' "$out"
+        exit 0
+      fi
+      podman_error="$out"
+    fi
+
+    if [ "$docker_candidate" -eq 0 ] && [ "$podman_candidate" -eq 0 ]; then
       printf 'DOCKER_STATE=absent\\n'
-      exit 0
+    else
+      printf 'DOCKER_STATE=error\\n%s\\n%s\\n' "$docker_error" "$podman_error"
     fi
-    out=$(docker ps -a --no-trunc --format '{{json .}}' 2>&1)
-    if [ $? -ne 0 ]; then
-      printf 'DOCKER_STATE=error\\n%s\\n' "$out"
-      exit 0
-    fi
-    printf 'DOCKER_STATE=ok\\n%s\\n' "$out"
     exit 0
     """
 
@@ -61,6 +97,11 @@ struct DockerStatus: Equatable {
             availability = .notInstalled
         case "DOCKER_STATE=ok":
             availability = .available
+            if let runtimeLine = lines.first, runtimeLine.hasPrefix("DOCKER_RUNTIME=") {
+                let value = runtimeLine.dropFirst("DOCKER_RUNTIME=".count)
+                runtime = Runtime(rawValue: String(value)) ?? .docker
+                lines = lines.dropFirst()
+            }
             containers = lines.compactMap { DockerContainer(jsonLine: String($0)) }
         case "DOCKER_STATE=error":
             let message = lines.joined(separator: " ")
@@ -93,12 +134,16 @@ enum DockerAction: String, CaseIterable {
         id.filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "." || $0 == "-" }
     }
 
-    func command(containerID: String) -> String {
-        "docker \(rawValue) \(Self.sanitized(containerID))"
+    func command(containerID: String, runtime: DockerStatus.Runtime = .docker) -> String {
+        "\(runtime.executable) \(rawValue) \(Self.sanitized(containerID))"
     }
 
-    static func logsCommand(containerID: String, tail: Int = 200) -> String {
-        "docker logs --tail \(tail) \(sanitized(containerID)) 2>&1"
+    static func logsCommand(
+        containerID: String,
+        tail: Int = 200,
+        runtime: DockerStatus.Runtime = .docker
+    ) -> String {
+        "\(runtime.executable) logs --tail \(tail) \(sanitized(containerID)) 2>&1"
     }
 }
 
@@ -122,18 +167,38 @@ struct DockerContainer: Equatable, Identifiable {
         guard let data = jsonLine.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return nil }
-        id = (object["ID"] as? String) ?? ""
-        name = (object["Names"] as? String) ?? ""
+        id = (object["ID"] as? String) ?? (object["Id"] as? String) ?? ""
+        if let value = object["Names"] as? String {
+            name = value
+        } else if let values = object["Names"] as? [String] {
+            name = values.first ?? ""
+        }
         image = (object["Image"] as? String) ?? ""
         state = (object["State"] as? String) ?? ""
         status = (object["Status"] as? String) ?? ""
-        ports = (object["Ports"] as? String) ?? ""
+        if status.isEmpty { status = state.capitalized }
+        ports = Self.parsePorts(object["Ports"])
         if let labels = object["Labels"] as? String {
             composeProject = labels.split(separator: ",")
                 .first { $0.hasPrefix("com.docker.compose.project=") }
                 .map { String($0.dropFirst("com.docker.compose.project=".count)) }
+        } else if let labels = object["Labels"] as? [String: String] {
+            composeProject = labels["com.docker.compose.project"]
         }
         guard !id.isEmpty || !name.isEmpty else { return nil }
+    }
+
+    private static func parsePorts(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        guard let values = value as? [[String: Any]] else { return "" }
+        return values.compactMap { port in
+            guard let containerPort = port["container_port"] as? Int,
+                  let protocolName = port["protocol"] as? String else { return nil }
+            if let hostPort = port["host_port"] as? Int, hostPort > 0 {
+                return "\(hostPort)→\(containerPort)/\(protocolName)"
+            }
+            return "\(containerPort)/\(protocolName)"
+        }.joined(separator: ", ")
     }
 
     /// 端口的紧凑展示:"0.0.0.0:8080->80/tcp, :::8080->80/tcp" → "8080→80/tcp";

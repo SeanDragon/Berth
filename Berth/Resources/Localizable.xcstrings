@@ -7327,12 +7327,12 @@
         }
       }
     },
-    "这台主机没有安装 Docker。": {
+    "这台主机没有安装 Docker 或 Podman。": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Docker is not installed on this host."
+            "value": "Neither Docker nor Podman is installed on this host."
           }
         }
       }

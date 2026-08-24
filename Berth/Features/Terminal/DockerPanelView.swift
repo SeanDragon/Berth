@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 独立 Docker 面板:远端容器状态,compose 项目分组,只读(一期不做启停/日志)。
+/// 独立容器面板:远端 Docker/Podman 状态,compose 项目分组和容器操作。
 /// 打开时拉取,之后每 8 秒静默刷新(仅面板打开期间;数据没变不重绘)。
 struct DockerPanelView: View {
     let session: TerminalSession
@@ -15,7 +15,19 @@ struct DockerPanelView: View {
     /// 生产主机的动作待确认
     @State private var pendingAction: PendingDockerAction?
     /// 日志 sheet 的目标容器
-    @State private var logsTarget: DockerContainer?
+    @State private var logsTarget: DockerLogsTarget?
+
+    struct DockerLogsTarget: Identifiable {
+        let id: String
+        let container: DockerContainer
+        let runtime: DockerStatus.Runtime
+
+        init(container: DockerContainer, runtime: DockerStatus.Runtime) {
+            self.id = container.id
+            self.container = container
+            self.runtime = runtime
+        }
+    }
 
     struct PendingDockerAction: Identifiable {
         let id = UUID()
@@ -27,7 +39,7 @@ struct DockerPanelView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            PanelHeader(title: "Docker") {
+            PanelHeader(title: status?.runtime.displayName ?? "Docker") {
                 PanelIconButton(symbol: "arrow.clockwise", help: String(localized: "刷新"), spinning: isLoading) {
                     Task { await refresh() }
                 }
@@ -44,8 +56,8 @@ struct DockerPanelView: View {
         }
         .frame(width: 290)
         .background(theme.panelBackground)
-        .sheet(item: $logsTarget) { container in
-            DockerLogsSheet(container: container, session: session)
+        .sheet(item: $logsTarget) { target in
+            DockerLogsSheet(container: target.container, runtime: target.runtime, session: session)
         }
         .confirmationDialog(
             "生产主机操作确认",
@@ -81,7 +93,7 @@ struct DockerPanelView: View {
             if let status {
                 switch status.availability {
                 case .notInstalled:
-                    placeholder(icon: "shippingbox", text: String(localized: "这台主机没有安装 Docker。"))
+                    placeholder(icon: "shippingbox", text: String(localized: "这台主机没有安装 Docker 或 Podman。"))
                 case .permissionDenied:
                     placeholder(
                         icon: "lock",
@@ -211,7 +223,9 @@ struct DockerPanelView: View {
             Button("启动") { perform(.start, on: container) }
         }
         Divider()
-        Button("查看日志") { logsTarget = container }
+        Button("查看日志") {
+            logsTarget = DockerLogsTarget(container: container, runtime: status?.runtime ?? .docker)
+        }
     }
 
     // MARK: - 动作执行
@@ -229,7 +243,8 @@ struct DockerPanelView: View {
         busyContainerID = container.id
         actionError = nil
         Task {
-            let outcome = await session.runAICommand(action.command(containerID: container.id))
+            let runtime = status?.runtime ?? .docker
+            let outcome = await session.runAICommand(action.command(containerID: container.id, runtime: runtime))
             if let outcome, let code = outcome.exitCode, code != 0 {
                 let detail = outcome.output.trimmingCharacters(in: .whitespacesAndNewlines)
                 actionError = String(localized: "\(action.label)「\(container.name)」失败:\(String(detail.suffix(160)))")
@@ -279,9 +294,10 @@ struct DockerPanelView: View {
     }
 }
 
-/// 容器日志(docker logs --tail 200,stderr 合并):等宽只读,可刷新可复制
+/// 容器日志(runtime logs --tail 200,stderr 合并):等宽只读,可刷新可复制
 struct DockerLogsSheet: View {
     let container: DockerContainer
+    let runtime: DockerStatus.Runtime
     let session: TerminalSession
     @Environment(\.dismiss) private var dismiss
 
@@ -328,7 +344,9 @@ struct DockerLogsSheet: View {
 
     private func load() async {
         isLoading = true
-        let outcome = await session.runAICommand(DockerAction.logsCommand(containerID: container.id))
+        let outcome = await session.runAICommand(
+            DockerAction.logsCommand(containerID: container.id, runtime: runtime)
+        )
         text = outcome?.output.trimmingCharacters(in: .whitespacesAndNewlines)
             ?? String(localized: "会话未连接,无法执行。")
         isLoading = false

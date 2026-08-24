@@ -53,6 +53,64 @@ final class DockerStatusTests: XCTestCase {
         XCTAssertFalse(status.containers[2].isRunning)
     }
 
+    func testParsesPodmanShapedOutput() {
+        let status = DockerStatus(parsing: """
+        DOCKER_STATE=ok
+        DOCKER_RUNTIME=podman
+        {"Id":"abc123","Image":"redis:latest","Labels":{"com.docker.compose.project":"new-api"},"Names":["redis"],"Ports":[{"container_port":6379,"host_port":6379,"protocol":"tcp"}],"State":"running","Status":""}
+        """)
+
+        XCTAssertEqual(status.runtime, .podman)
+        XCTAssertEqual(status.containers.count, 1)
+        XCTAssertEqual(status.containers[0].id, "abc123")
+        XCTAssertEqual(status.containers[0].name, "redis")
+        XCTAssertEqual(status.containers[0].composeProject, "new-api")
+        XCTAssertEqual(status.containers[0].displayPorts, "6379→6379/tcp")
+        XCTAssertTrue(status.containers[0].isRunning)
+    }
+
+    func testCollectionScriptProbesBothRuntimes() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("berth-docker-probe-\(UUID().uuidString)")
+        XCTAssertNoThrow(try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true))
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let docker = directory.appendingPathComponent("docker")
+        let podman = directory.appendingPathComponent("podman")
+        let dockerScript = """
+        #!/bin/sh
+        if [ "$1" = "--version" ]; then
+            printf 'Docker version 27.0.0\\n'
+            exit 0
+        fi
+        printf 'Cannot connect to the Docker daemon\\n' >&2
+        exit 1
+        """
+        let podmanScript = """
+        #!/bin/sh
+        printf '{"Id":"podman-1","Image":"alpine","Names":["probe"],"State":"running","Status":""}\\n'
+        """
+        for (url, script) in [(docker, dockerScript), (podman, podmanScript)] {
+            try? script.write(to: url, atomically: true, encoding: .utf8)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", DockerStatus.collectionScript]
+        process.environment = ["PATH": "\(directory.path):/usr/bin:/bin"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        XCTAssertNoThrow(try process.run())
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        let status = DockerStatus(parsing: String(data: data, encoding: .utf8) ?? "")
+        XCTAssertEqual(status.runtime, .podman)
+        XCTAssertEqual(status.containers.map(\.name), ["probe"])
+    }
+
     func testComposeGroupingKeepsLooseContainersLast() {
         var status = DockerStatus(parsing: """
         DOCKER_STATE=ok
@@ -92,6 +150,17 @@ final class DockerStatusTests: XCTestCase {
         XCTAssertEqual(
             DockerAction.logsCommand(containerID: "d29f75bb7021"),
             "docker logs --tail 200 d29f75bb7021 2>&1"
+        )
+    }
+
+    func testActionCommandsUsePodmanRuntime() {
+        XCTAssertEqual(
+            DockerAction.stop.command(containerID: "abc123", runtime: .podman),
+            "podman stop abc123"
+        )
+        XCTAssertEqual(
+            DockerAction.logsCommand(containerID: "abc123", runtime: .podman),
+            "podman logs --tail 200 abc123 2>&1"
         )
     }
 
