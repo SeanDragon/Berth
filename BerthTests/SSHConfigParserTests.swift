@@ -433,6 +433,88 @@ final class SSHConfigParserTests: XCTestCase {
             return false
         })
     }
+
+    /// Test I: Included Host 接收 Host * fallback 选项
+    func testIncludedHostsReceiveWildcardFallbackOptions() throws {
+        let tempHome = try createTempDirectory()
+        let confD = tempHome.appendingPathComponent(".ssh/conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        let hostsConf = """
+        Host nas
+            HostName nas.example.com
+        """
+        try hostsConf.write(to: confD.appendingPathComponent("10-hosts.conf"), atomically: true, encoding: .utf8)
+
+        let rootConfig = """
+        Include ~/.ssh/conf.d/*.conf
+
+        Host *
+            User fallback-user
+            Port 2222
+            IdentityFile ~/.ssh/id_ed25519
+        """
+        let configFile = tempHome.appendingPathComponent(".ssh/config")
+        try rootConfig.write(to: configFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: configFile.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.count, 1)
+        XCTAssertEqual(result.hosts[0].alias, "nas")
+        XCTAssertEqual(result.hosts[0].hostname, "nas.example.com")
+        XCTAssertEqual(result.hosts[0].user, "fallback-user")
+        XCTAssertEqual(result.hosts[0].port, 2222)
+        XCTAssertEqual(result.hosts[0].identityFile, "\(tempHome.path)/.ssh/id_ed25519")
+        XCTAssertFalse(result.issues.contains { issue in
+            if case .includeNotExpanded = issue.kind { return true }
+            return false
+        })
+    }
+
+    /// Test J: Specific values 优先于 fallback,缺省项继承 Host * fallback
+    func testIncludedHostSpecificOptionsOverrideWildcardFallback() throws {
+        let tempHome = try createTempDirectory()
+        let confD = tempHome.appendingPathComponent(".ssh/conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        let hostsConf = """
+        Host nas
+            HostName nas.example.com
+
+        Host server
+            HostName server.example.com
+            User root
+            Port 2200
+        """
+        try hostsConf.write(to: confD.appendingPathComponent("10-hosts.conf"), atomically: true, encoding: .utf8)
+
+        let rootConfig = """
+        Include ~/.ssh/conf.d/*.conf
+
+        Host *
+            User fallback-user
+            Port 2222
+            IdentityFile ~/.ssh/id_ed25519
+        """
+        let configFile = tempHome.appendingPathComponent(".ssh/config")
+        try rootConfig.write(to: configFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: configFile.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.count, 2)
+
+        XCTAssertEqual(result.hosts[0].alias, "nas")
+        XCTAssertEqual(result.hosts[0].hostname, "nas.example.com")
+        XCTAssertEqual(result.hosts[0].user, "fallback-user")
+        XCTAssertEqual(result.hosts[0].port, 2222)
+        XCTAssertEqual(result.hosts[0].identityFile, "\(tempHome.path)/.ssh/id_ed25519")
+
+        XCTAssertEqual(result.hosts[1].alias, "server")
+        XCTAssertEqual(result.hosts[1].hostname, "server.example.com")
+        XCTAssertEqual(result.hosts[1].user, "root")
+        XCTAssertEqual(result.hosts[1].port, 2200)
+        XCTAssertEqual(result.hosts[1].identityFile, "\(tempHome.path)/.ssh/id_ed25519")
+
+        XCTAssertTrue(result.issues.isEmpty)
+    }
 }
 
 final class KeychainStoreTests: XCTestCase {
