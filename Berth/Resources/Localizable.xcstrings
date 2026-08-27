@@ -270,6 +270,16 @@
         }
       }
     },
+    "(仅 SSH 会话可用)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " (SSH sessions only)"
+          }
+        }
+      }
+    },
     "(无法预览:二进制或过大)": {
       "localizations": {
         "en": {
@@ -286,6 +296,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "(no log output)"
+          }
+        }
+      }
+    },
+    "(空对话)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "(empty chat)"
           }
         }
       }
@@ -330,6 +350,26 @@
         }
       }
     },
+    "100 轮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "100 rounds"
+          }
+        }
+      }
+    },
+    "12 轮(保守)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "12 rounds (conservative)"
+          }
+        }
+      }
+    },
     "2 秒": {
       "localizations": {
         "en": {
@@ -350,12 +390,32 @@
         }
       }
     },
+    "30 轮(默认)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "30 rounds (default)"
+          }
+        }
+      }
+    },
     "5 秒": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "5s"
+          }
+        }
+      }
+    },
+    "60 轮": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "60 rounds"
           }
         }
       }
@@ -652,6 +712,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Docker status"
+          }
+        }
+      }
+    },
+    "Docker 状态(信息面板)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Docker status (info panel)"
           }
         }
       }
@@ -1273,6 +1343,16 @@
       },
       "shouldTranslate": false
     },
+    "· %lld 条": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "· %lld messages"
+          }
+        }
+      }
+    },
     "—": {
       "localizations": {
         "en": {
@@ -1641,6 +1721,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Host List"
+          }
+        }
+      }
+    },
+    "主机只在所属工作空间显示;新空间从空白开始,现有主机留在原空间。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hosts only show in the workspace they belong to; a new workspace starts blank, and existing hosts stay where they are."
           }
         }
       }
@@ -2365,6 +2455,16 @@
         }
       }
     },
+    "关闭 Docker 面板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Close Docker panel"
+          }
+        }
+      }
+    },
     "关闭 SFTP 文件面板": {
       "localizations": {
         "en": {
@@ -2461,6 +2561,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Close This Pane"
+          }
+        }
+      }
+    },
+    "关闭隐私模式(恢复主机地址)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn off privacy mode (unmask host addresses)"
           }
         }
       }
@@ -2646,6 +2756,36 @@
         }
       }
     },
+    "删除工作空间(主机归入第一个空间)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete workspace (hosts move to the first workspace)"
+          }
+        }
+      }
+    },
+    "删除工作空间「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete workspace “%@”"
+          }
+        }
+      }
+    },
+    "删除该对话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete this chat"
+          }
+        }
+      }
+    },
     "别名 %@ 重复定义,按先出现的一份处理": {
       "localizations": {
         "en": {
@@ -2706,12 +2846,32 @@
         }
       }
     },
+    "单次对话命令轮数上限": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Command rounds per message"
+          }
+        }
+      }
+    },
     "危险命令": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Dangerous command"
+          }
+        }
+      }
+    },
+    "历史对话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chat history"
           }
         }
       }
@@ -2732,6 +2892,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Double-click to connect to %@"
+          }
+        }
+      }
+    },
+    "双击重命名": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Double-click to rename"
           }
         }
       }
@@ -3776,6 +3946,16 @@
         }
       }
     },
+    "工作空间名称,如:工作 / 个人": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Workspace name, e.g. Work / Personal"
+          }
+        }
+      }
+    },
     "左右分屏": {
       "localizations": {
         "en": {
@@ -4276,6 +4456,16 @@
         }
       }
     },
+    "打开 Docker 面板": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Open Docker panel"
+          }
+        }
+      }
+    },
     "打开 SFTP 文件面板": {
       "localizations": {
         "en": {
@@ -4412,6 +4602,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Decline"
+          }
+        }
+      }
+    },
+    "拖到 Finder 下载": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag to Finder to download"
+          }
+        }
+      }
+    },
+    "拖到 Finder 下载文件夹": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Drag to Finder to download the folder"
           }
         }
       }
@@ -4556,6 +4766,16 @@
         }
       }
     },
+    "收起检查器栏": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collapse inspector"
+          }
+        }
+      }
+    },
     "数据": {
       "localizations": {
         "en": {
@@ -4646,12 +4866,42 @@
         }
       }
     },
+    "新对话(当前对话保留在历史)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New chat (current chat is kept in history)"
+          }
+        }
+      }
+    },
     "新建主机": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "New Host"
+          }
+        }
+      }
+    },
+    "新建工作空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Workspace"
+          }
+        }
+      }
+    },
+    "新建工作空间…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Workspace…"
           }
         }
       }
@@ -5057,6 +5307,16 @@
         }
       }
     },
+    "暂无历史对话": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No past chats yet"
+          }
+        }
+      }
+    },
     "暂无转发。点右上「+」临时加一条(不落库)。": {
       "localizations": {
         "en": {
@@ -5113,6 +5373,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Server Info (⌘I)"
+          }
+        }
+      }
+    },
+    "服务器信息(⌘I,含 Docker)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Server info (⌘I, incl. Docker)"
           }
         }
       }
@@ -5507,6 +5777,16 @@
         }
       }
     },
+    "检查器栏:AI / SFTP / 信息 / Docker / 片段": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inspector: AI / SFTP / Info / Docker / Snippets"
+          }
+        }
+      }
+    },
     "检查失败,稍后再试。": {
       "localizations": {
         "en": {
@@ -5533,6 +5813,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Check for Updates"
+          }
+        }
+      }
+    },
+    "概览": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overview"
           }
         }
       }
@@ -5697,6 +5987,16 @@
         }
       }
     },
+    "此工作空间还没有主机\n右键主机「移到工作空间」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hosts in this workspace yet\nRight-click a host → “Move to Workspace”"
+          }
+        }
+      }
+    },
     "此操作不可撤销。": {
       "localizations": {
         "en": {
@@ -5713,6 +6013,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "TCP-probes direct hosts every 30s; jump-host and proxy hosts are skipped."
+          }
+        }
+      }
+    },
+    "每发一条消息,AI 最多连续执行这么多轮命令;达到上限会暂停,回复任意内容可继续。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Per message you send, the AI can run at most this many command rounds in a row; when the limit is reached it pauses, and replying with anything lets it continue."
           }
         }
       }
@@ -5833,6 +6143,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Clear Conversation"
+          }
+        }
+      }
+    },
+    "点击小圆点或触控板横扫切换工作空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Click a dot or swipe horizontally on the trackpad to switch workspaces"
           }
         }
       }
@@ -6243,6 +6563,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Private key path"
+          }
+        }
+      }
+    },
+    "移到工作空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Workspace"
           }
         }
       }
@@ -7967,6 +8297,16 @@
         }
       }
     },
+    "配置 AI 助手": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Configure AI assistant"
+          }
+        }
+      }
+    },
     "采集耗时 %lld ms": {
       "localizations": {
         "en": {
@@ -8037,6 +8377,26 @@
         }
       }
     },
+    "重命名「%@」…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename “%@”…"
+          }
+        }
+      }
+    },
+    "重命名工作空间": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Workspace"
+          }
+        }
+      }
+    },
     "重命名标签": {
       "localizations": {
         "en": {
@@ -8083,6 +8443,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Alibaba Bailian (Qwen)"
+          }
+        }
+      }
+    },
+    "隐私模式(打码主机地址,录屏用)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privacy mode (mask host addresses for screen recording)"
           }
         }
       }
