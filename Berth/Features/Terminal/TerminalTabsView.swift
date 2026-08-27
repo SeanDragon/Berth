@@ -49,46 +49,11 @@ struct TerminalTabsView: View {
                     ) { id in
                         sessionManager.focusPane(id)
                     }
-                    if let session = sessionManager.selected {
-                        // SFTP/Docker/服务器信息是 SSH 专属能力,本地 Shell 会话不挂载
-                        if sessionManager.isSFTPVisible, !session.spec.isLocal {
-                            Divider().overlay(ThemeStore.shared.current.borderColor)
-                            SFTPPanelView(session: session) {
-                                sessionManager.isSFTPVisible = false
-                            }
-                            .id(session.id)
+                    if let session = sessionManager.selected, sessionManager.activeSidePanel != nil {
+                        // 检查器栏(Xcode inspector 式):顶部图标条选面板,整条随开关进出
+                        Divider().overlay(ThemeStore.shared.current.borderColor)
+                        InspectorRail(session: session)
                             .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-                        if sessionManager.isDockerPanelVisible, !session.spec.isLocal {
-                            Divider().overlay(ThemeStore.shared.current.borderColor)
-                            DockerPanelView(session: session) {
-                                sessionManager.isDockerPanelVisible = false
-                            }
-                            .id(session.id)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-                        if sessionManager.isInspectorVisible, !session.spec.isLocal {
-                            Divider().overlay(ThemeStore.shared.current.borderColor)
-                            ServerInfoInspector(session: session) {
-                                sessionManager.isInspectorVisible = false
-                            }
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-                        if sessionManager.isSnippetsPanelVisible {
-                            Divider().overlay(ThemeStore.shared.current.borderColor)
-                            SnippetsPanelView {
-                                sessionManager.isSnippetsPanelVisible = false
-                            }
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
-                        if sessionManager.isAIPanelVisible {
-                            Divider().overlay(ThemeStore.shared.current.borderColor)
-                            AIChatPanelView(session: session) {
-                                sessionManager.isAIPanelVisible = false
-                            }
-                            .id(session.id)
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                        }
                     }
                 }
                 if let session = sessionManager.selected {
@@ -161,10 +126,11 @@ struct TerminalTabsView: View {
         }
         .sharedBackgroundVisibility(.hidden)
         ToolbarSpacer(.flexible)
-        // 按钮组不再藏系统底:交还 Liquid Glass 胶囊簇(Tahoe 原生工具栏观感)
+        // 藏系统玻璃底(它是椭圆),按钮自绘正圆
         ToolbarItem(placement: .automatic) {
             if !sessionManager.tabs.isEmpty { panelButtons }
         }
+        .sharedBackgroundVisibility(.hidden)
     }
 
     /// macOS 15:没有 ToolbarSpacer,合成单个 item 走 Xcode 式「可伸缩中区」——
@@ -357,84 +323,51 @@ struct TerminalTabsView: View {
         .help("新建标签页(本地 Shell / 快速连接)")
     }
 
-    /// Safari 式按钮组(标题栏右侧):一个大胶囊容器,内含各个圆形悬停按钮
+    /// 检查器栏开关(Xcode 式,标题栏右侧):单个按钮整体展开/收起,
+    /// 具体面板在栏内顶部的图标条上选(⌘⇧A/⌘⇧F/⌘I/⌘⇧S 仍直达对应面板)。
+    /// 外观对齐左侧系统侧栏按钮:同尺寸圆形液态玻璃底 + 主色大图标
+    /// (系统给单按钮的玻璃底是椭圆,已在 toolbar item 上藏掉,这里自绘正圆)
     private var panelButtons: some View {
-        HStack(spacing: 2) {
-            PanelIconButton(
-                symbol: "chart.bar.xaxis",
-                help: String(localized: "仪表盘:所有主机的资源状态(⌘0)"),
-                tint: sessionManager.isDashboardVisible ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    sessionManager.isDashboardVisible.toggle()
-                }
-            }
-            Divider().frame(height: 14).overlay(ThemeStore.shared.current.borderColor)
-            PanelIconButton(
-                symbol: "sparkles",
-                help: String(localized: "AI 助手(⌘⇧A)"),
-                tint: sessionManager.isAIPanelVisible ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    sessionManager.isAIPanelVisible.toggle()
-                }
-            }
-            PanelIconButton(
-                symbol: "curlybraces",
-                help: String(localized: "命令片段(⌘⇧S)"),
-                tint: sessionManager.isSnippetsPanelVisible ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                    sessionManager.isSnippetsPanelVisible.toggle()
-                }
-            }
-            // SSH 专属面板按钮:本地 Shell 会话不显示
-            if sessionManager.selected?.spec.isLocal != true {
-                PanelIconButton(
-                    symbol: "folder",
-                    help: String(localized: "SFTP 文件(⌘⇧F)"),
-                    tint: sessionManager.isSFTPVisible ? ThemeStore.shared.current.accentColor : nil
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        sessionManager.isSFTPVisible.toggle()
-                    }
-                }
-                PanelIconButton(
-                    symbol: "shippingbox",
-                    help: String(localized: "Docker 状态"),
-                    tint: sessionManager.isDockerPanelVisible ? ThemeStore.shared.current.accentColor : nil
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        sessionManager.isDockerPanelVisible.toggle()
-                    }
-                }
-                PanelIconButton(
-                    symbol: "sidebar.right",
-                    help: String(localized: "服务器信息(⌘I)"),
-                    tint: sessionManager.isInspectorVisible ? ThemeStore.shared.current.accentColor : nil
-                ) {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        sessionManager.isInspectorVisible.toggle()
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .background {
-            // 26+ 系统工具栏玻璃已经是按钮簇的底,再自绘就叠两层
-            if Self.drawsOwnButtonCluster {
-                Capsule()
-                    .fill(ThemeStore.shared.current.elevatedBackground)
-                    .overlay(Capsule().stroke(ThemeStore.shared.current.borderColor, lineWidth: 1))
+        InspectorToggleButton {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                sessionManager.toggleInspectorRail()
             }
         }
     }
 
-    /// macOS 15 / 强制 legacy:按钮簇底自绘;26+ 交给系统 Liquid Glass
-    private static var drawsOwnButtonCluster: Bool {
-        if #available(macOS 26.0, *) { return forcesLegacyChrome }
-        return true
+    private struct InspectorToggleButton: View {
+        let action: () -> Void
+        @State private var hovering = false
+
+        var body: some View {
+            Button(action: action) {
+                Image(systemName: "sidebar.left")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.primary)
+                    // 水平镜像:面板线条移到右侧,对应右侧检查器
+                    .scaleEffect(x: -1, y: 1)
+                    .frame(width: 34, height: 34)
+                    .background {
+                        if #available(macOS 26.0, *) {
+                            Color.clear.glassEffect(.regular, in: .circle)
+                        } else {
+                            Circle()
+                                .fill(ThemeStore.shared.current.elevatedBackground)
+                                .overlay(Circle().stroke(ThemeStore.shared.current.borderColor, lineWidth: 1))
+                        }
+                    }
+                    .overlay {
+                        if hovering {
+                            Circle().fill(Color.primary.opacity(0.06))
+                        }
+                    }
+                    .contentShape(Circle())
+            }
+            .buttonStyle(PressableIconStyle())
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .onHover { hovering = $0 }
+            .help(String(localized: "检查器栏:AI / SFTP / 信息 / Docker / 片段"))
+        }
     }
 
     /// 广播模式横幅:提示所有分屏同步接收键入

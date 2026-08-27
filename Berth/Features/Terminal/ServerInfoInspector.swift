@@ -36,7 +36,7 @@ struct ServerInfoInspector: View {
                 .padding(14)
             }
         }
-        .frame(width: 260)
+        .frame(maxWidth: .infinity)
         .background(theme.panelBackground)
         .onReceive(ticker) { now = $0 }
         .task(id: session.id) { await refresh() }
@@ -47,7 +47,6 @@ struct ServerInfoInspector: View {
             PanelIconButton(symbol: "arrow.clockwise", help: String(localized: "刷新"), spinning: isLoading) {
                 Task { await refresh() }
             }
-            PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
         }
     }
 

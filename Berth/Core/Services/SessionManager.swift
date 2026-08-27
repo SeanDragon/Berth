@@ -23,13 +23,53 @@ final class SessionManager {
     var pendingCloseTab: PaneTab?
     /// ⌘F:请求在当前会话打开搜索条(UI 消费后自增以触发)
     var searchRequestToken = 0
-    var isInspectorVisible = false
     /// ⌘0:终端区整体切成仪表盘(标签条留着,会话不受影响);独立窗口另有一份
     var isDashboardVisible = false
-    var isSFTPVisible = false
-    var isSnippetsPanelVisible = false
-    var isAIPanelVisible = false
-    var isDockerPanelVisible = false
+
+    /// 右侧检查器栏(Xcode inspector 式):同一时间只开一个面板,栏内图标条切换
+    enum SidePanel: String {
+        case ai, sftp, info, docker, snippets
+    }
+    var activeSidePanel: SidePanel? {
+        didSet { if let panel = activeSidePanel { lastSidePanel = panel } }
+    }
+    /// 收起前最后停留的面板:标题栏单开关重新展开时回到它
+    @ObservationIgnored private var lastSidePanel: SidePanel = .ai
+
+    /// 标题栏开关:展开(回到上次面板)/ 收起整条检查器栏
+    func toggleInspectorRail() {
+        activeSidePanel = activeSidePanel == nil ? lastSidePanel : nil
+    }
+
+    // 旧的五个开关保留成兼容属性:置 true = 切到该面板(自动关别的),置 false = 收起
+    var isInspectorVisible: Bool {
+        get { activeSidePanel == .info }
+        set { setPanel(.info, visible: newValue) }
+    }
+    var isSFTPVisible: Bool {
+        get { activeSidePanel == .sftp }
+        set { setPanel(.sftp, visible: newValue) }
+    }
+    var isSnippetsPanelVisible: Bool {
+        get { activeSidePanel == .snippets }
+        set { setPanel(.snippets, visible: newValue) }
+    }
+    var isAIPanelVisible: Bool {
+        get { activeSidePanel == .ai }
+        set { setPanel(.ai, visible: newValue) }
+    }
+    var isDockerPanelVisible: Bool {
+        get { activeSidePanel == .docker }
+        set { setPanel(.docker, visible: newValue) }
+    }
+
+    private func setPanel(_ panel: SidePanel, visible: Bool) {
+        if visible {
+            activeSidePanel = panel
+        } else if activeSidePanel == panel {
+            activeSidePanel = nil
+        }
+    }
 
     /// 由 App 启动时注入,用于连接后回写主机的探测信息(系统名等)
     @ObservationIgnored var modelContainer: ModelContainer?

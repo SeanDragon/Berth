@@ -43,7 +43,6 @@ struct DockerPanelView: View {
                 PanelIconButton(symbol: "arrow.clockwise", help: String(localized: "刷新"), spinning: isLoading) {
                     Task { await refresh() }
                 }
-                PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
             }
             Divider().overlay(theme.borderColor)
             ScrollView {
@@ -54,7 +53,7 @@ struct DockerPanelView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .frame(width: 290)
+        .frame(maxWidth: .infinity)
         .background(theme.panelBackground)
         .sheet(item: $logsTarget) { target in
             DockerLogsSheet(container: target.container, runtime: target.runtime, session: session)

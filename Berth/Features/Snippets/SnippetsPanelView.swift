@@ -19,7 +19,6 @@ struct SnippetsPanelView: View {
                 PanelIconButton(symbol: "square.and.pencil", help: String(localized: "管理命令片段")) {
                     openWindow(id: "snippets")
                 }
-                PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
             }
             Divider().overlay(theme.borderColor)
             if snippets.isEmpty {
@@ -28,7 +27,7 @@ struct SnippetsPanelView: View {
                 snippetList
             }
         }
-        .frame(width: 260)
+        .frame(maxWidth: .infinity)
         .background(theme.panelBackground)
     }
 

@@ -42,7 +42,7 @@ struct SFTPPanelView: View {
                 transferBar(transfers)
             }
         }
-        .frame(width: 300)
+        .frame(maxWidth: .infinity)
         .background(theme.panelBackground)
         .overlay {
             if isDropTargeted {
@@ -127,7 +127,6 @@ struct SFTPPanelView: View {
                 jumpToTerminalDirectory()
             }
             PanelIconButton(symbol: "arrow.clockwise", help: String(localized: "刷新")) { Task { await browser?.refresh() } }
-            PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
         }
         .alert("新建文件夹", isPresented: $creatingDir) {
             TextField("名称", text: $newDirName)
