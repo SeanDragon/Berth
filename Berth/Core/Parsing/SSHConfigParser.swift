@@ -67,9 +67,6 @@ struct SSHConfigParseResult {
 /// ssh_config 解析器。支持 Host 多别名与通配(*、?、! 取反)、
 /// HostName / User / Port / IdentityFile(~ 展开)/ ProxyJump,
 /// 参数语义与 ssh 一致:每个参数取「第一次出现」的值。
-/// ssh_config 解析器。支持 Host 多别名与通配(*、?、! 取反)、
-/// HostName / User / Port / IdentityFile(~ 展开)/ ProxyJump,
-/// 参数语义与 ssh 一致:每个参数取「第一次出现」的值。
 /// - Match 块:仍未支持,跳过并在 `SSHConfigIssue` 中报告。
 /// - Include 指令:纯文本 parser (`parse` / `parseDetailed`) 不访问文件系统、不展开 Include;
 ///   文件 parser (`parseFile` / `parseFileDetailed`) 支持展开首个 Host/Match 之前的常见顶层 Include
