@@ -13,12 +13,37 @@ enum WindowSnapshot {
         // 不会被启动逻辑当成自动化环境 —— 用于截「真实会话恢复」路径
         guard let path = env["BERTH_WINDOW_SNAPSHOT"]
             ?? UserDefaults.standard.string(forKey: "berth.windowSnapshot") else { return }
+        // 造工作空间演示数据:两个空间 + 三台摆设主机(配临时库,截侧栏分页条用)
+        if env["BERTH_SNAPSHOT_SPACES"] == "1", let container = SessionManager.shared.modelContainer {
+            let context = container.mainContext
+            let work = HostGroup(name: "工作", sortOrder: 0)
+            let personal = HostGroup(name: "个人", sortOrder: 1)
+            context.insert(work)
+            context.insert(personal)
+            let seeds: [(String, String, String, HostGroup)] = [
+                ("web-01", "10.0.0.11", "ops", work),
+                ("db-01", "10.0.0.12", "ops", work),
+                ("nas", "192.168.1.20", "me", personal),
+            ]
+            for (index, seed) in seeds.enumerated() {
+                let host = Host(label: seed.0, hostname: seed.1, username: seed.2, sortOrder: index)
+                context.insert(host)
+                host.group = seed.3
+            }
+            try? context.save()
+        }
         // 值即要开的本地 Shell 数量("1" 开一个,"5" 开五个,方便截多标签布局)
         if let count = Int(env["BERTH_SNAPSHOT_OPEN_LOCAL"] ?? ""), count > 0 {
             try? await Task.sleep(for: .seconds(1))
             for _ in 0..<count {
                 _ = SessionManager.shared.open(spec: .localShell())
             }
+        }
+        // 打开检查器栏的某个面板(ai/sftp/info/docker/snippets),截右栏布局用
+        if let raw = env["BERTH_SNAPSHOT_PANEL"],
+           let panel = SessionManager.SidePanel(rawValue: raw) {
+            try? await Task.sleep(for: .milliseconds(500))
+            SessionManager.shared.activeSidePanel = panel
         }
         // 分屏 + 指定比例:验证分割线拖拽后的布局(issue #11-2)
         if let ratio = Double(env["BERTH_SNAPSHOT_SPLIT"] ?? "") {

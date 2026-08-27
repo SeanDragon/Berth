@@ -10,6 +10,8 @@ struct SidebarView: View {
     @Environment(SessionManager.self) private var sessionManager
     @Environment(\.openWindow) private var openWindow
     @Query(sort: \Host.sortOrder) private var storedHosts: [Host]
+    @Query(sort: \HostGroup.sortOrder) private var groups: [HostGroup]
+    @State private var spaceStore = SpaceStore.shared
     @AppStorage(SettingsKeys.demoMode) private var demoMode = false
 
     /// 托管主机(库)+ config 镜像(内存);演示模式下换内置示例(防录屏/截图泄漏)
@@ -47,18 +49,47 @@ struct SidebarView: View {
         }
     }
 
+    /// 工作空间生效条件:有空间、非演示模式(演示列表不分组,也不泄漏真实空间名)
+    private var spacesActive: Bool { !demoMode && !groups.isEmpty }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    private var selectedSpace: HostGroup? {
+        groups.first { $0.id == spaceStore.selectedID } ?? groups.first
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
             configHintRow
             if allHosts.isEmpty {
                 emptyState
+            } else if isSearching || !spacesActive {
+                // 搜索跨全部空间;没有空间时保持扁平列表(功能零打扰)
+                hostListPage(hosts: visibleHosts, emptyText: String(localized: "没有匹配的主机"))
             } else {
-                hostList
+                spacePager
+            }
+            if spacesActive, !isSearching {
+                spaceSwitcher
             }
             // 底部工具行与右侧悬浮状态栏同一水平线,分隔线画上去反而突兀
             keysRow
         }
+        // 触控板在侧边栏上横扫切换工作空间(Arc 手势)
+        .background(SpaceSwipeCatcher())
+        // 侧边栏空白处右键即可管理工作空间(主机行/小圆点各有更近的菜单,不冲突)
+        .contextMenu {
+            Button("新建工作空间…") { SpacePrompt.create(in: modelContext) }
+            if spacesActive, let space = selectedSpace {
+                Button("重命名「\(space.name)」…") { SpacePrompt.rename(space, in: modelContext) }
+                Divider()
+                Button("删除工作空间「\(space.name)」", role: .destructive) { deleteSpace(space) }
+            }
+        }
+        .task(id: groups.map(\.id)) { spaceStore.syncSpaces(groups.map(\.id)) }
         // 透明 chrome:不刷不透明底,让 NavigationSplitView 原生的 behind-window
         // 侧栏毛玻璃透出桌面,只叠 45% 主题 tint 保住配色气质(压黑档留给不透明模式,
         // 叠在玻璃上会发死黑);不透明模式维持原来的 chrome 带色
@@ -71,7 +102,7 @@ struct SidebarView: View {
         }
         .task(id: allHosts.count) { updateReachabilityTargets() }
         .sheet(isPresented: $isCreatingHost) {
-            HostEditorView(host: nil, defaultGroupID: nil)
+            HostEditorView(host: nil, defaultGroupID: spacesActive ? selectedSpace?.id : nil)
         }
         .sheet(item: $editingHost) { host in
             HostEditorView(host: host, defaultGroupID: nil)
@@ -159,17 +190,125 @@ struct SidebarView: View {
         }
     }
 
-    private var hostList: some View {
+    // MARK: - 工作空间(Arc 式,自 Termite 移植)
+
+    /// 当前实际展示的行(键盘上下/回车/删除的作用域):搜索时是全量结果,
+    /// 否则是当前空间的主机
+    private var displayedHosts: [Host] {
+        if isSearching || !spacesActive { return visibleHosts }
+        return hosts(inSpace: spaceStore.selectedID)
+    }
+
+    private func hosts(inSpace id: UUID?) -> [Host] {
+        guard let id else { return allHosts }
+        return allHosts.filter { spaceStore.effectiveSpaceID(of: $0) == id }
+    }
+
+    /// 空间切换的 shared-axis 转场:当前页与相邻页同位叠放,一起做
+    /// 「小位移 + 交叉淡入」;相邻页常驻(透明度 0),手势途中不构建新页面
+    @ViewBuilder private var spacePager: some View {
+        if groups.count > 1 {
+            let progress = spaceStore.dragProgress
+            let index = spaceStore.selectedIndex
+            ZStack {
+                if index > 0 {
+                    spacePage(at: index - 1).modifier(SharedAxisSlide(progress: progress - 1))
+                }
+                if index < groups.count - 1 {
+                    spacePage(at: index + 1).modifier(SharedAxisSlide(progress: progress + 1))
+                }
+                spacePage(at: index).modifier(SharedAxisSlide(progress: progress))
+            }
+            .clipped()
+        } else {
+            spacePage(at: 0)
+        }
+    }
+
+    private func spacePage(at index: Int) -> some View {
+        let space = groups.indices.contains(index) ? groups[index] : nil
+        return hostListPage(
+            hosts: hosts(inSpace: space?.id),
+            emptyText: String(localized: "此工作空间还没有主机\n右键主机「移到工作空间」")
+        )
+    }
+
+    /// Arc 式空间切换条:当前空间名(双击改名)+ 一排小圆点,
+    /// 点击 / 触控板横扫切换,右键新建与管理
+    private var spaceSwitcher: some View {
+        VStack(spacing: 4) {
+            if let space = selectedSpace {
+                ZStack {
+                    Text(space.name)
+                        .font(.system(size: 11.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .id(space.id)
+                        .transition(.push(from: spaceStore.slideEdge))
+                }
+                .opacity(1 - min(1, abs(spaceStore.dragProgress)) * 0.8)
+                .offset(x: spaceStore.dragProgress * 10)
+                .clipped()
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) { SpacePrompt.rename(space, in: modelContext) }
+                .help(String(localized: "双击重命名"))
+            }
+            HStack(spacing: 9) {
+                Spacer(minLength: 0)
+                ForEach(groups) { space in
+                    SpaceDot(
+                        name: space.name,
+                        isSelected: space.id == selectedSpace?.id,
+                        hasLiveSession: spaceHasLiveSession(space),
+                        select: {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                spaceStore.select(space.id)
+                            }
+                        },
+                        rename: { SpacePrompt.rename(space, in: modelContext) },
+                        create: { SpacePrompt.create(in: modelContext) },
+                        remove: { deleteSpace(space) }
+                    )
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.top, 5)
+        .padding(.bottom, 2)
+        .frame(maxWidth: .infinity)
+        .contentShape(Rectangle())
+        .help(String(localized: "点击小圆点或触控板横扫切换工作空间"))
+    }
+
+    /// 空间聚合状态:组内任一主机有活跃连接,未选中的小圆点转绿
+    private func spaceHasLiveSession(_ space: HostGroup) -> Bool {
+        allHosts.contains { host in
+            guard spaceStore.effectiveSpaceID(of: host) == space.id else { return false }
+            if case .connected = sessionManager.liveState(for: host.id) { return true }
+            return false
+        }
+    }
+
+    /// 删除工作空间:主机按「归属无效 → 第一个空间」规则自动回流,不动任何连接
+    private func deleteSpace(_ space: HostGroup) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            modelContext.delete(space)
+            try? modelContext.save()
+        }
+    }
+
+    private func hostListPage(hosts: [Host], emptyText: String) -> some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 2) {
-                if visibleHosts.isEmpty {
-                    Text("没有匹配的主机")
+                if hosts.isEmpty {
+                    Text(emptyText)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.top, 24)
                 } else {
-                    ForEach(visibleHosts) { host in
+                    ForEach(hosts) { host in
                         HostRow(
                             host: host,
                             isSelected: selectedHostID == host.id,
@@ -214,6 +353,22 @@ struct SidebarView: View {
         if !host.macAddress.isEmpty {
             Button("网络唤醒(Wake-on-LAN)") { wake(host) }
         }
+        if !groups.isEmpty, !demoMode {
+            Divider()
+            Menu("移到工作空间") {
+                ForEach(groups) { space in
+                    Button {
+                        move(host, to: space)
+                    } label: {
+                        if spaceStore.effectiveSpaceID(of: host) == space.id {
+                            Label(space.name, systemImage: "checkmark")
+                        } else {
+                            Text(space.name)
+                        }
+                    }
+                }
+            }
+        }
         Divider()
         if host.source == .sshConfig {
             Button("转为托管主机…") { convertToManaged(host) }
@@ -228,13 +383,11 @@ struct SidebarView: View {
         }
     }
 
-    /// 底部工具行:左 密钥 + 仪表盘入口,右 主题配色 + 设置(应用级功能放左下角,macOS 惯例)。
+    /// 底部工具行:左 仪表盘入口,右 主题配色 + 设置(应用级功能放左下角,macOS 惯例)。
+    /// 密钥管理/隐私模式移进 ⌘P 命令面板(低频功能不占常驻图标)。
     /// 侧栏可以拖到很窄,这行一律用图标 —— 带文字时先被截成「仪…」,反而更难认
     private var keysRow: some View {
         HStack(spacing: 2) {
-            PanelIconButton(symbol: "key", help: String(localized: "密钥管理(独立窗口)")) {
-                openWindow(id: "keys")
-            }
             PanelIconButton(
                 symbol: "chart.bar.xaxis",
                 help: String(localized: "仪表盘:所有主机的资源状态(⌘0)"),
@@ -256,14 +409,15 @@ struct SidebarView: View {
                     UpdateChecker.shared.openReleasePage(update)
                 }
             }
-            PanelIconButton(
-                symbol: PrivacyMode.shared.isOn ? "eye.slash.fill" : "eye.slash",
-                help: PrivacyMode.shared.isOn
-                    ? String(localized: "隐私模式已开启:主机地址已打码,点击恢复")
-                    : String(localized: "隐私模式:打码所有主机地址(录屏用)"),
-                tint: PrivacyMode.shared.isOn ? ThemeStore.shared.current.accentColor : nil
-            ) {
-                PrivacyMode.shared.isOn.toggle()
+            if PrivacyMode.shared.isOn {
+                // 打码进行中给个常亮提示,点击恢复;平时不占位(开关在 ⌘P)
+                PanelIconButton(
+                    symbol: "eye.slash.fill",
+                    help: String(localized: "隐私模式已开启:主机地址已打码,点击恢复"),
+                    tint: ThemeStore.shared.current.accentColor
+                ) {
+                    PrivacyMode.shared.isOn.toggle()
+                }
             }
             PanelIconButton(symbol: "paintpalette", help: String(localized: "终端配色")) { isThemePanelPresented.toggle() }
                 .popover(isPresented: $isThemePanelPresented, arrowEdge: .top) {
@@ -373,6 +527,19 @@ struct SidebarView: View {
         sessionManager.splitFocused(axis: axis, spec: HostSpec.resolve(host, in: allHosts))
     }
 
+    /// 移到工作空间:托管主机写 group 关系(随 CloudKit 同步);
+    /// ssh_config 镜像主机不入库,归属写本机映射
+    private func move(_ host: Host, to space: HostGroup) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            if host.source == .sshConfig {
+                spaceStore.assignMirrorHost(host.id, to: space.id)
+            } else {
+                host.group = space
+                try? modelContext.save()
+            }
+        }
+    }
+
     /// 网络唤醒:向本机所在子网 + 全局广播发 magic packet
     private func wake(_ host: Host) {
         var broadcasts = ["255.255.255.255"]
@@ -393,7 +560,7 @@ struct SidebarView: View {
 
     /// 回车:有选中连选中,否则连第一个可见结果(搜索场景)
     private func connectSelectionOrFirst() {
-        let rows = visibleHosts
+        let rows = displayedHosts
         if let selected = selectedHostID, let host = rows.first(where: { $0.id == selected }) {
             activate(host)
         } else if !searchText.isEmpty, let first = rows.first {
@@ -402,7 +569,7 @@ struct SidebarView: View {
     }
 
     private func moveSelection(_ delta: Int) {
-        let rows = visibleHosts
+        let rows = displayedHosts
         guard !rows.isEmpty else { return }
         guard let current = selectedHostID, let index = rows.firstIndex(where: { $0.id == current }) else {
             selectedHostID = delta > 0 ? rows.first?.id : rows.last?.id
@@ -414,7 +581,7 @@ struct SidebarView: View {
 
     private func requestDeleteSelection() {
         guard let selected = selectedHostID,
-              let host = visibleHosts.first(where: { $0.id == selected }) else { return }
+              let host = displayedHosts.first(where: { $0.id == selected }) else { return }
         if host.source == .sshConfig {
             configHostPendingDeletion = PendingHost(id: host.id, label: host.label)
         } else {
@@ -459,6 +626,65 @@ struct SidebarView: View {
             privateKeyPath: host.privateKeyPath,
             note: host.note
         )
+    }
+}
+
+/// 工作空间小圆点(Arc 底部指示器,自 Termite 移植):单色——选中=亮点并放大,
+/// 未选中=暗点、悬停提亮;组内有活跃连接且未选中时转绿。右键新建与管理
+private struct SpaceDot: View {
+    let name: String
+    let isSelected: Bool
+    var hasLiveSession = false
+    let select: () -> Void
+    let rename: () -> Void
+    let create: () -> Void
+    let remove: () -> Void
+
+    @State private var hovering = false
+
+    private var fill: Color {
+        if isSelected { return Color.primary.opacity(0.9) }
+        if hasLiveSession { return .green }
+        return Color.primary.opacity(hovering ? 0.5 : 0.22)
+    }
+
+    var body: some View {
+        Circle()
+            .fill(fill)
+            .frame(width: isSelected ? 8 : 6, height: isSelected ? 8 : 6)
+            .scaleEffect(hovering && !isSelected ? 1.25 : 1)
+            // 点太小不好点:外扩一圈隐形命中区
+            .frame(width: 16, height: 16)
+            .contentShape(Circle())
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isSelected)
+            .animation(.easeOut(duration: 0.12), value: hovering)
+            .onHover { hovering = $0 }
+            .onTapGesture { select() }
+            .contextMenu {
+                Button("重命名") { rename() }
+                Button("新建工作空间…") { create() }
+                Divider()
+                Button("删除工作空间(主机归入第一个空间)", role: .destructive) { remove() }
+            }
+            .help(name)
+    }
+}
+
+/// shared-axis 转场的单页姿态(自 Termite 移植)。progress 0 = 正位且不透明;
+/// ±1 = 让到一侧并完全透明。位移只有 36pt——「轻盈」来自小位移 + 透明度交接
+private struct SharedAxisSlide: ViewModifier {
+    let progress: CGFloat
+
+    private var clamped: CGFloat { max(-1, min(1, progress)) }
+
+    func body(content: Content) -> some View {
+        content
+            .offset(x: clamped * 36)
+            .opacity(Double(1 - abs(clamped)))
+            // 让出去的一页同时收一点,避免纯平移的呆板
+            .scaleEffect(1 - abs(clamped) * 0.02, anchor: .center)
+            // 透明的页不该还能点
+            .allowsHitTesting(abs(clamped) < 0.5)
     }
 }
 

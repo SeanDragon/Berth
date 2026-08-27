@@ -107,6 +107,12 @@ struct CommandPaletteView: View {
                     m.askAIAboutSelection(text)
                 }
             },
+            PaletteCommand(id: "docker", title: m.isDockerPanelVisible ? String(localized: "关闭 Docker 面板") : String(localized: "打开 Docker 面板"), icon: "shippingbox", isEnabled: hasSession && !isLocalSession) {
+                m.isDockerPanelVisible.toggle()
+            },
+            PaletteCommand(id: "privacy", title: PrivacyMode.shared.isOn ? String(localized: "关闭隐私模式(恢复主机地址)") : String(localized: "隐私模式(打码主机地址,录屏用)"), icon: "eye.slash") {
+                PrivacyMode.shared.isOn.toggle()
+            },
         ]
         // 主题切换命令
         for theme in TerminalTheme.builtIn {
