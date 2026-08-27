@@ -53,6 +53,9 @@ final class AIToolCall: Identifiable {
 final class AIChatController {
     private(set) var messages: [AIChatMessage] = []
     private(set) var isBusy = false
+    /// 当前对话在历史库里的身份;「新对话」换新 id,旧对话留在历史里
+    private(set) var conversationID = UUID()
+    @ObservationIgnored private var conversationCreatedAt = Date()
 
     private weak var session: TerminalSession?
     private let spec: HostSpec
@@ -61,8 +64,6 @@ final class AIChatController {
     @ObservationIgnored private var approvals: [String: CheckedContinuation<Bool, Never>] = [:]
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    /// 单条用户消息最多允许的 请求→工具 循环轮数(防失控)
-    private static let maxLoops = 12
     /// 回传给模型的单条命令输出上限(超出截断中段)
     private static let maxToolOutputChars = 12000
 
@@ -90,10 +91,12 @@ final class AIChatController {
 
         messages.append(AIChatMessage(role: .user, text: trimmed))
         apiMessages.append(["role": "user", "content": trimmed])
+        persist()
         isBusy = true
         task = Task { [weak self] in
             await self?.runLoop(client: client)
             self?.isBusy = false
+            self?.persist()
         }
     }
 
@@ -119,6 +122,103 @@ final class AIChatController {
         apiMessages = []
     }
 
+    /// 开新对话:当前对话已在各一致点落盘,留在历史里;这里只换身份并清空
+    func startNewConversation() {
+        clear()
+        conversationID = UUID()
+        conversationCreatedAt = Date()
+    }
+
+    /// 删除当前对话(含历史文件),并转为一个全新对话
+    func discardCurrentConversation() {
+        AIChatHistory.delete(id: conversationID)
+        startNewConversation()
+    }
+
+    /// 从历史加载一个对话接着聊(会停掉进行中的请求)
+    func loadConversation(id: UUID) {
+        guard let record = AIChatHistory.load(id: id) else { return }
+        clear()
+        conversationID = id
+        conversationCreatedAt = Date(
+            timeIntervalSince1970: record["createdAt"] as? Double ?? Date().timeIntervalSince1970)
+        messages = (record["messages"] as? [[String: Any]] ?? []).map(Self.restoreMessage)
+        var api = record["api"] as? [[String: Any]] ?? []
+        // 防御:历史若停在 assistant 的 tool_use 上(异常退出),补中断 tool_result 配平,
+        // 否则下一次请求会因悬空 tool_use 被 API 拒收
+        if let last = api.last, last["role"] as? String == "assistant",
+           let content = last["content"] as? [[String: Any]] {
+            let results: [[String: Any]] = content
+                .filter { $0["type"] as? String == "tool_use" }
+                .compactMap { use in
+                    guard let useID = use["id"] as? String else { return nil }
+                    return ["type": "tool_result", "tool_use_id": useID,
+                            "content": "Interrupted: the app quit before this command finished.",
+                            "is_error": true]
+                }
+            if !results.isEmpty { api.append(["role": "user", "content": results]) }
+        }
+        apiMessages = api
+    }
+
+    // MARK: - 历史持久化
+
+    /// 只在 apiMessages 一致点调用(用户消息后 / 工具结果配平后 / 回合结束)
+    private func persist() {
+        guard !messages.isEmpty else { return }
+        let title = messages.first(where: { $0.role == .user })?.text
+            .components(separatedBy: .newlines).first?.prefix(60)
+        AIChatHistory.save([
+            "id": conversationID.uuidString,
+            "hostKey": AIChatHistory.hostKey(for: spec),
+            "hostLabel": spec.label,
+            "createdAt": conversationCreatedAt.timeIntervalSince1970,
+            "updatedAt": Date().timeIntervalSince1970,
+            "title": String(title ?? ""),
+            "messages": messages.map(Self.messageRecord),
+            "api": apiMessages,
+        ])
+    }
+
+    private static func messageRecord(_ message: AIChatMessage) -> [String: Any] {
+        var dict: [String: Any] = [
+            "role": message.role == .user ? "user" : "assistant",
+            "text": message.text,
+        ]
+        if let errorText = message.errorText { dict["error"] = errorText }
+        if !message.toolCalls.isEmpty {
+            dict["toolCalls"] = message.toolCalls.map { call -> [String: Any] in
+                var record: [String: Any] = [
+                    "id": call.id,
+                    "command": call.command,
+                    "output": call.output,
+                    // 进行中/待确认的状态没有意义了,落盘时归到最近的终态
+                    "denied": call.status == .denied || call.status == .awaitingApproval,
+                ]
+                if let code = call.exitCode { record["exitCode"] = code }
+                return record
+            }
+        }
+        return dict
+    }
+
+    private static func restoreMessage(_ dict: [String: Any]) -> AIChatMessage {
+        let message = AIChatMessage(
+            role: dict["role"] as? String == "user" ? .user : .assistant,
+            text: dict["text"] as? String ?? "")
+        message.errorText = dict["error"] as? String
+        message.toolCalls = (dict["toolCalls"] as? [[String: Any]] ?? []).map { record in
+            let call = AIToolCall(
+                id: record["id"] as? String ?? UUID().uuidString,
+                command: record["command"] as? String ?? "",
+                status: record["denied"] as? Bool == true ? .denied : .done)
+            call.output = record["output"] as? String ?? ""
+            call.exitCode = record["exitCode"] as? Int
+            return call
+        }
+        return message
+    }
+
     func approve(_ call: AIToolCall) { resolveApproval(call, allowed: true) }
     func deny(_ call: AIToolCall) { resolveApproval(call, allowed: false) }
 
@@ -132,7 +232,8 @@ final class AIChatController {
 
     private func runLoop(client: AIChatClient) async {
         cwdContext = await resolveWorkingDirectory()
-        for _ in 0..<Self.maxLoops {
+        // 单条用户消息最多允许的 请求→工具 循环轮数(防失控),可在设置里调
+        for _ in 0..<AISettings.maxCommandRounds {
             let assistant = AIChatMessage(role: .assistant)
             messages.append(assistant)
 
@@ -181,6 +282,7 @@ final class AIChatController {
                 }
                 // 全部 tool_result 放进同一条 user 消息
                 apiMessages.append(["role": "user", "content": results])
+                persist() // 一致点:tool_use 已配平,中途退出也能完整恢复
                 if Task.isCancelled { return }
                 continue
             case "refusal":
@@ -328,6 +430,12 @@ final class AIChatStore {
         if let existing = controllers[session.id] { return existing }
         let controller = AIChatController(session: session)
         controllers[session.id] = controller
+        // 自动接上这台主机最近的历史对话(正被别的会话聊着的除外,免得两边互相覆盖)
+        let active = Set(controllers.values.filter { $0 !== controller }.map(\.conversationID))
+        if let latest = AIChatHistory.summaries(hostKey: AIChatHistory.hostKey(for: session.spec))
+            .first(where: { !active.contains($0.id) }) {
+            controller.loadConversation(id: latest.id)
+        }
         return controller
     }
 

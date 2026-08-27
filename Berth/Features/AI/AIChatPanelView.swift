@@ -9,6 +9,7 @@ struct AIChatPanelView: View {
     @State private var controller: AIChatController
     @State private var draft = ""
     @State private var settings = AISettingsStore.shared
+    @State private var isHistoryPresented = false
     @FocusState private var inputFocused: Bool
 
     private var theme: TerminalTheme { ThemeStore.shared.current }
@@ -28,11 +29,18 @@ struct AIChatPanelView: View {
                     tab: .ai
                 )
                 if !controller.messages.isEmpty {
-                    PanelIconButton(symbol: "trash", help: String(localized: "清空对话")) {
-                        controller.clear()
+                    PanelIconButton(symbol: "square.and.pencil", help: String(localized: "新对话(当前对话保留在历史)")) {
+                        controller.startNewConversation()
                     }
                 }
-                PanelIconButton(symbol: "xmark", help: String(localized: "关闭")) { onClose() }
+                PanelIconButton(symbol: "clock.arrow.circlepath", help: String(localized: "历史对话")) {
+                    isHistoryPresented.toggle()
+                }
+                .popover(isPresented: $isHistoryPresented, arrowEdge: .bottom) {
+                    AIChatHistoryPopover(controller: controller, spec: session.spec) {
+                        isHistoryPresented = false
+                    }
+                }
             }
             Divider().overlay(theme.borderColor)
             if !settings.isConfigured {
@@ -47,7 +55,7 @@ struct AIChatPanelView: View {
                 inputBar
             }
         }
-        .frame(width: 320)
+        .frame(maxWidth: .infinity)
         .background(theme.panelBackground)
         // 别的设备经 iCloud 钥匙串同步过来的 Key,回到前台时也认
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -194,6 +202,109 @@ struct AIChatPanelView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 16)
+    }
+}
+
+// MARK: - 历史对话
+
+/// 这台主机的历史对话列表:点击加载接着聊,行内可删;当前对话带标记
+private struct AIChatHistoryPopover: View {
+    let controller: AIChatController
+    let spec: HostSpec
+    let onSelect: () -> Void
+
+    @State private var summaries: [AIChatHistory.Summary] = []
+
+    private var theme: TerminalTheme { ThemeStore.shared.current }
+
+    var body: some View {
+        Group {
+            if summaries.isEmpty {
+                Text("暂无历史对话")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(20)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 1) {
+                        ForEach(summaries) { summary in
+                            row(summary)
+                        }
+                    }
+                    .padding(6)
+                }
+                .frame(width: 264)
+                .frame(maxHeight: 320)
+            }
+        }
+        .onAppear { refresh() }
+    }
+
+    private func row(_ summary: AIChatHistory.Summary) -> some View {
+        let isCurrent = summary.id == controller.conversationID
+        return HStack(spacing: 6) {
+            Button {
+                if !isCurrent { controller.loadConversation(id: summary.id) }
+                onSelect()
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(summary.title.isEmpty ? String(localized: "(空对话)") : summary.title)
+                        .font(.system(size: 12, weight: isCurrent ? .semibold : .regular))
+                        .lineLimit(1)
+                    HStack(spacing: 4) {
+                        if isCurrent {
+                            Text("当前")
+                                .font(.system(size: 9, weight: .semibold))
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Capsule().fill(theme.accentSoft))
+                                .foregroundStyle(theme.accentColor)
+                        }
+                        Text(summary.updatedAt.formatted(.relative(presentation: .named)))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                        Text("· \(summary.messageCount) 条")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                if isCurrent {
+                    controller.discardCurrentConversation()
+                } else {
+                    AIChatHistory.delete(id: summary.id)
+                }
+                refresh()
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            .buttonStyle(.plain)
+            .help(String(localized: "删除该对话"))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .modifier(RowHoverBackground())
+    }
+
+    private func refresh() {
+        summaries = AIChatHistory.summaries(hostKey: AIChatHistory.hostKey(for: spec))
+    }
+}
+
+/// 历史行悬停底色
+private struct RowHoverBackground: ViewModifier {
+    @State private var hovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Color.primary.opacity(0.07) : .clear))
+            .onHover { hovering = $0 }
     }
 }
 

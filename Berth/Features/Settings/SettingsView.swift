@@ -42,6 +42,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.aiBaseURL) private var aiBaseURL = ""
     @AppStorage(SettingsKeys.aiAutoRunCommands) private var aiAutoRun = false
     @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
+    @AppStorage(SettingsKeys.aiMaxCommandRounds) private var aiMaxRounds = AISettings.defaultMaxCommandRounds
     @AppStorage(SettingsKeys.autoCheckUpdates) private var autoCheckUpdates = true
     @AppStorage(SettingsKeys.localShellPath) private var localShellPath = ""
     @AppStorage(SettingsKeys.externalEditorPath) private var externalEditorPath = ""
@@ -279,6 +280,15 @@ struct SettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 Toggle("自动执行 AI 建议的命令", isOn: $aiAutoRun)
+                Picker("单次对话命令轮数上限", selection: $aiMaxRounds) {
+                    Text("12 轮(保守)").tag(12)
+                    Text("30 轮(默认)").tag(30)
+                    Text("60 轮").tag(60)
+                    Text("100 轮").tag(100)
+                }
+                Text("每发一条消息,AI 最多连续执行这么多轮命令;达到上限会暂停,回复任意内容可继续。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Text("模型需支持工具调用(function calling),否则 AI 无法在服务器上执行命令。Key 只存钥匙串(随 iCloud 钥匙串同步),本地模型(Ollama / LM Studio)可留空。地址末尾已是版本号(如 /v1、/api/paas/v4)就按原样用,否则自动补 /v1。中转网关若提示不允许 /v1/messages,把接口格式切到「OpenAI 兼容」。开启自动执行后,危险命令与生产警戒主机仍会要求确认。")
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -56,6 +56,14 @@ enum AISettings {
         UserDefaults.standard.bool(forKey: SettingsKeys.aiAutoRunCommands)
     }
 
+    static let defaultMaxCommandRounds = 30
+
+    /// 单次对话的「模型回复 → 执行命令」循环上限,防模型死循环刷命令
+    static var maxCommandRounds: Int {
+        let raw = UserDefaults.standard.integer(forKey: SettingsKeys.aiMaxCommandRounds)
+        return raw > 0 ? raw : defaultMaxCommandRounds
+    }
+
     /// 本地推理(Ollama / LM Studio 等)不需要 Key
     static var isLocalEndpoint: Bool {
         let host = baseURL.host?.lowercased() ?? ""
