@@ -5327,6 +5327,16 @@
         }
       }
     },
+    "更多:仪表盘 / 配色 / 设置": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More: dashboard / colors / settings"
+          }
+        }
+      }
+    },
     "更新": {
       "localizations": {
         "en": {

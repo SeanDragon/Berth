@@ -25,6 +25,8 @@ struct SidebarView: View {
     @State private var selectedHostID: UUID?
     /// 主题配色面板(popover)
     @State private var isThemePanelPresented = false
+    /// 底部「更多」弹窗(仪表盘/配色/设置)
+    @State private var isMorePresented = false
 
     // 编辑/删除状态(删除只存快照,不持有模型 —— 模型可能被 config 同步等外部删除,悬空访问会崩溃)
     @State private var editingHost: Host?
@@ -71,9 +73,6 @@ struct SidebarView: View {
                 hostListPage(hosts: visibleHosts, emptyText: String(localized: "没有匹配的主机"))
             } else {
                 spacePager
-            }
-            if spacesActive, !isSearching {
-                spaceSwitcher
             }
             // 底部工具行与右侧悬浮状态栏同一水平线,分隔线画上去反而突兀
             keysRow
@@ -233,49 +232,45 @@ struct SidebarView: View {
         )
     }
 
-    /// Arc 式空间切换条:当前空间名(双击改名)+ 一排小圆点,
-    /// 点击 / 触控板横扫切换,右键新建与管理
-    private var spaceSwitcher: some View {
-        VStack(spacing: 4) {
-            if let space = selectedSpace {
-                ZStack {
-                    Text(space.name)
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .id(space.id)
-                        .transition(.push(from: spaceStore.slideEdge))
-                }
+    /// 左侧固定:当前空间名(双击改名,横扫时轻微跟随淡出)
+    @ViewBuilder private var spaceNameLabel: some View {
+        if let space = selectedSpace {
+            Text(space.name)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 96, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .contentTransition(.opacity)
+                .animation(.easeOut(duration: 0.18), value: space.id)
                 .opacity(1 - min(1, abs(spaceStore.dragProgress)) * 0.8)
-                .offset(x: spaceStore.dragProgress * 10)
-                .clipped()
+                .offset(x: spaceStore.dragProgress * 8)
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2) { SpacePrompt.rename(space, in: modelContext) }
                 .help(String(localized: "双击重命名"))
-            }
-            HStack(spacing: 9) {
-                Spacer(minLength: 0)
-                ForEach(groups) { space in
-                    SpaceDot(
-                        name: space.name,
-                        isSelected: space.id == selectedSpace?.id,
-                        hasLiveSession: spaceHasLiveSession(space),
-                        select: {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                spaceStore.select(space.id)
-                            }
-                        },
-                        rename: { SpacePrompt.rename(space, in: modelContext) },
-                        create: { SpacePrompt.create(in: modelContext) },
-                        remove: { deleteSpace(space) }
-                    )
-                }
-                Spacer(minLength: 0)
+        }
+    }
+
+    /// 中间固定:小圆点指示器(点击/横扫切换,右键管理)
+    private var spaceDots: some View {
+        HStack(spacing: 4) {
+            ForEach(groups) { space in
+                SpaceDot(
+                    name: space.name,
+                    isSelected: space.id == selectedSpace?.id,
+                    hasLiveSession: spaceHasLiveSession(space),
+                    select: {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                            spaceStore.select(space.id)
+                        }
+                    },
+                    rename: { SpacePrompt.rename(space, in: modelContext) },
+                    create: { SpacePrompt.create(in: modelContext) },
+                    remove: { deleteSpace(space) }
+                )
             }
         }
-        .padding(.top, 5)
-        .padding(.bottom, 2)
-        .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .help(String(localized: "点击小圆点或触控板横扫切换工作空间"))
     }
@@ -384,51 +379,99 @@ struct SidebarView: View {
     }
 
     /// 底部工具行:左 仪表盘入口,右 主题配色 + 设置(应用级功能放左下角,macOS 惯例)。
-    /// 密钥管理/隐私模式移进 ⌘P 命令面板(低频功能不占常驻图标)。
-    /// 侧栏可以拖到很窄,这行一律用图标 —— 带文字时先被截成「仪…」,反而更难认
+    /// 底部一行:左 固定空间名 | 中 居中圆点指示器 | 右 固定「更多」按钮
+    /// (弹窗收纳 仪表盘/配色/设置);隐私模式开着时保留常亮眼睛提示。
+    /// 密钥管理/隐私模式开关在 ⌘P 命令面板(低频功能不占常驻图标)
     private var keysRow: some View {
-        HStack(spacing: 2) {
-            PanelIconButton(
-                symbol: "chart.bar.xaxis",
-                help: String(localized: "仪表盘:所有主机的资源状态(⌘0)"),
-                tint: sessionManager.isDashboardVisible ? theme.accentColor : nil
-            ) {
-                withAnimation(.easeOut(duration: 0.18)) {
-                    sessionManager.isDashboardVisible.toggle()
-                }
+        ZStack {
+            // 中间:空间指示器绝对居中,不随两侧内容宽度漂移
+            if spacesActive, !isSearching {
+                spaceDots
             }
+            HStack(spacing: 2) {
+                if spacesActive, !isSearching {
+                    spaceNameLabel
+                }
 
-            Spacer()
+                Spacer()
 
-            if let update = UpdateChecker.shared.available {
-                PanelIconButton(
-                    symbol: "arrow.up.circle.fill",
-                    help: String(localized: "新版本 \(update.version) 可用 —— 点击查看"),
-                    tint: ThemeStore.shared.current.accentColor
-                ) {
-                    UpdateChecker.shared.openReleasePage(update)
+                if PrivacyMode.shared.isOn {
+                    // 打码进行中给个常亮提示,点击恢复;平时不占位(开关在 ⌘P)
+                    PanelIconButton(
+                        symbol: "eye.slash.fill",
+                        help: String(localized: "隐私模式已开启:主机地址已打码,点击恢复"),
+                        tint: ThemeStore.shared.current.accentColor
+                    ) {
+                        PrivacyMode.shared.isOn.toggle()
+                    }
                 }
-            }
-            if PrivacyMode.shared.isOn {
-                // 打码进行中给个常亮提示,点击恢复;平时不占位(开关在 ⌘P)
                 PanelIconButton(
-                    symbol: "eye.slash.fill",
-                    help: String(localized: "隐私模式已开启:主机地址已打码,点击恢复"),
-                    tint: ThemeStore.shared.current.accentColor
+                    symbol: "ellipsis.circle",
+                    help: String(localized: "更多:仪表盘 / 配色 / 设置")
                 ) {
-                    PrivacyMode.shared.isOn.toggle()
+                    isMorePresented.toggle()
                 }
-            }
-            PanelIconButton(symbol: "paintpalette", help: String(localized: "终端配色")) { isThemePanelPresented.toggle() }
+                // 有新版本时在「更多」按钮上挂个小圆点提示
+                .overlay(alignment: .topTrailing) {
+                    if UpdateChecker.shared.available != nil {
+                        Circle()
+                            .fill(theme.accentColor)
+                            .frame(width: 6, height: 6)
+                            .offset(x: -2, y: 2)
+                    }
+                }
+                .popover(isPresented: $isMorePresented, arrowEdge: .top) {
+                    morePopover
+                }
                 .popover(isPresented: $isThemePanelPresented, arrowEdge: .top) {
                     ThemePanelView()
                 }
-            SettingsIconLink()
+            }
         }
         .padding(.horizontal, 8)
         // 与右侧终端底部的悬浮状态栏同高同底距,两边内容横向对齐成一条线
         .frame(height: 28)
         .padding(.bottom, 14)
+    }
+
+    /// 「更多」小弹窗:低频入口一处收纳,行样式与应用一致
+    private var morePopover: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            if let update = UpdateChecker.shared.available {
+                MorePopoverRow(
+                    icon: "arrow.up.circle.fill",
+                    title: String(localized: "新版本 \(update.version) 可用 —— 点击查看"),
+                    tint: theme.accentColor
+                ) {
+                    isMorePresented = false
+                    UpdateChecker.shared.openReleasePage(update)
+                }
+                Divider().padding(.vertical, 3)
+            }
+            MorePopoverRow(
+                icon: "chart.bar.xaxis",
+                title: String(localized: "仪表盘"),
+                shortcut: "⌘0",
+                tint: sessionManager.isDashboardVisible ? theme.accentColor : nil
+            ) {
+                isMorePresented = false
+                withAnimation(.easeOut(duration: 0.18)) {
+                    sessionManager.isDashboardVisible.toggle()
+                }
+            }
+            MorePopoverRow(icon: "paintpalette", title: String(localized: "终端配色")) {
+                isMorePresented = false
+                // 弹窗收起后再开配色面板,两个 popover 不打架
+                DispatchQueue.main.async { isThemePanelPresented = true }
+            }
+            SettingsLink {
+                MorePopoverRowLabel(icon: "gearshape", title: String(localized: "设置"), shortcut: "⌘,")
+            }
+            .buttonStyle(.plain)
+            .simultaneousGesture(TapGesture().onEnded { isMorePresented = false })
+        }
+        .padding(6)
+        .frame(width: 190)
     }
 
     /// config 里出现了没在导入面板见过的主机时,给一条可点的轻提示(而不是自己冒出来)
@@ -629,6 +672,55 @@ struct SidebarView: View {
     }
 }
 
+/// 「更多」弹窗的一行:图标 + 标题 + 快捷键,悬停提亮
+private struct MorePopoverRow: View {
+    let icon: String
+    let title: String
+    var shortcut: String?
+    var tint: Color?
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            MorePopoverRowLabel(icon: icon, title: title, shortcut: shortcut, tint: tint)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct MorePopoverRowLabel: View {
+    let icon: String
+    let title: String
+    var shortcut: String?
+    var tint: Color?
+
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 12))
+                .foregroundStyle(tint ?? Color.secondary)
+                .frame(width: 18)
+            Text(title)
+                .font(.system(size: 12.5))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if let shortcut {
+                Text(shortcut)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 6).fill(hovering ? Color.primary.opacity(0.08) : .clear))
+        .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 }
+    }
+}
+
 /// 工作空间小圆点(Arc 底部指示器,自 Termite 移植):单色——选中=亮点并放大,
 /// 未选中=暗点、悬停提亮;组内有活跃连接且未选中时转绿。右键新建与管理
 private struct SpaceDot: View {
@@ -643,9 +735,9 @@ private struct SpaceDot: View {
     @State private var hovering = false
 
     private var fill: Color {
-        if isSelected { return Color.primary.opacity(0.9) }
-        if hasLiveSession { return .green }
-        return Color.primary.opacity(hovering ? 0.5 : 0.22)
+        if isSelected { return Color.primary.opacity(0.5) }
+        if hasLiveSession { return Color.green.opacity(0.55) }
+        return Color.primary.opacity(hovering ? 0.32 : 0.15)
     }
 
     var body: some View {
