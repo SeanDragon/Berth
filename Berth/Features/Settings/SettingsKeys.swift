@@ -3,6 +3,8 @@ import Foundation
 /// @AppStorage / UserDefaults 键名统一定义
 enum SettingsKeys {
     static let terminalFontSize = "terminal.fontSize"
+    /// 终端字体族(空 = 系统等宽 SF Mono;选 Nerd 字体可显示私用区图标)
+    static let terminalFontFamily = "terminal.fontFamily"
     static let confirmBeforeClosingTab = "terminal.confirmBeforeClosingTab"
     static let autoReconnect = "session.autoReconnect"
     static let terminalTheme = "terminal.theme"

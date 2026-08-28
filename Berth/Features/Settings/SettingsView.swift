@@ -24,6 +24,8 @@ final class SettingsNavigation {
 /// 基础设置(M1)。M2 扩展:主题、字体族、scrollback、快捷键、安全策略等。
 struct SettingsView: View {
     @AppStorage(SettingsKeys.terminalFontSize) private var fontSize: Double = 13
+    @AppStorage(SettingsKeys.terminalFontFamily) private var fontFamily = ""
+    private let monoFamilies = TerminalFontPrefs.availableMonospacedFamilies()
     @AppStorage(SettingsKeys.cursorShape) private var cursorShape = CursorPrefs.shapeBlock
     @AppStorage(SettingsKeys.cursorBlink) private var cursorBlink = true
     @AppStorage(SettingsKeys.copyOnSelect) private var copyOnSelect = false
@@ -149,6 +151,19 @@ struct SettingsView: View {
                 Text("终端区始终保持不透明,保证输出可读。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                Picker("字体", selection: $fontFamily) {
+                    Text("系统等宽(SF Mono)").tag("")
+                    if !fontFamily.isEmpty && !monoFamilies.contains(fontFamily) {
+                        Text(fontFamily).tag(fontFamily)
+                    }
+                    ForEach(monoFamilies, id: \.self) { family in
+                        Text(family).tag(family)
+                    }
+                }
+                .onChange(of: fontFamily) { _, _ in TerminalFontPrefs.applyToAllSessions() }
+                Text("显示 Nerd Font 图标需选择已安装的 Nerd 字体(如 JetBrainsMono Nerd Font)。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 HStack {
                     Slider(value: $fontSize, in: 10...22, step: 1) {
                         Text("字号")
@@ -157,12 +172,8 @@ struct SettingsView: View {
                         .monospacedDigit()
                         .frame(width: 44, alignment: .trailing)
                 }
-                .onChange(of: fontSize) { _, size in
-                    // 即时应用到所有已开会话(行列数变化会经 resize 流程同步给 PTY)
-                    for session in SessionManager.shared.sessions {
-                        session.terminalView.font = .monospacedSystemFont(ofSize: CGFloat(size), weight: .regular)
-                    }
-                }
+                // 即时应用到所有已开会话(行列数变化会经 resize 流程同步给 PTY)
+                .onChange(of: fontSize) { _, _ in TerminalFontPrefs.applyToAllSessions() }
                 Picker("光标样式", selection: $cursorShape) {
                     Text("方块").tag(CursorPrefs.shapeBlock)
                     Text("竖线").tag(CursorPrefs.shapeBar)

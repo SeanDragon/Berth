@@ -139,11 +139,10 @@ final class TerminalSession: Identifiable {
 
     init(spec: HostSpec) {
         self.spec = spec
-        let fontSize = CGFloat(UserDefaults.standard.object(forKey: SettingsKeys.terminalFontSize) as? Double ?? 13)
         let view = BerthTerminalView(frame: NSRect(x: 0, y: 0, width: 800, height: 600))
         view.isProductionHost = spec.isProduction
         self.terminalView = view
-        terminalView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        terminalView.font = TerminalFontPrefs.resolved()
         ThemeStore.shared.apply(to: terminalView)
         CursorPrefs.apply(to: terminalView)
         terminalView.terminalDelegate = self

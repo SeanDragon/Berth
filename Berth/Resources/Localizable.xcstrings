@@ -3616,6 +3616,16 @@
         }
       }
     },
+    "字体": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Font"
+          }
+        }
+      }
+    },
     "字号": {
       "localizations": {
         "en": {
@@ -5223,6 +5233,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Showing %lld of %lld hosts"
+          }
+        }
+      }
+    },
+    "显示 Nerd Font 图标需选择已安装的 Nerd 字体(如 JetBrainsMono Nerd Font)。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "To display Nerd Font icons, select an installed Nerd Font (e.g. JetBrainsMono Nerd Font)."
           }
         }
       }
@@ -6863,6 +6883,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "OS"
+          }
+        }
+      }
+    },
+    "系统等宽(SF Mono)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System monospaced (SF Mono)"
           }
         }
       }
