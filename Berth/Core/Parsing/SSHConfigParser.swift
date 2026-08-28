@@ -67,7 +67,10 @@ struct SSHConfigParseResult {
 /// ssh_config 解析器。支持 Host 多别名与通配(*、?、! 取反)、
 /// HostName / User / Port / IdentityFile(~ 展开)/ ProxyJump,
 /// 参数语义与 ssh 一致:每个参数取「第一次出现」的值。
-/// Match 块与 Include 指令暂不支持 —— 跳过,并记进 `SSHConfigIssue` 由 UI 告知用户。
+/// - Match 块:仍未支持,跳过并在 `SSHConfigIssue` 中报告。
+/// - Include 指令:纯文本 parser (`parse` / `parseDetailed`) 不访问文件系统、不展开 Include;
+///   文件 parser (`parseFile` / `parseFileDetailed`) 支持展开首个 Host/Match 之前的常见顶层 Include
+///   (如 `~/.ssh/conf.d/*.conf` 或绝对路径单文件),其它 Include 继续在 `SSHConfigIssue` 中报告。
 enum SSHConfigParser {
 
     struct Block {
@@ -137,28 +140,154 @@ enum SSHConfigParser {
         return SSHConfigParseResult(hosts: hosts, issues: deduped)
     }
 
-    static func parseFile(at path: String) -> [SSHConfigHost] {
-        parseFileDetailed(at: path).hosts
+    static func parseFile(at path: String, homeDirectory: String = NSHomeDirectory()) -> [SSHConfigHost] {
+        parseFileDetailed(at: path, homeDirectory: homeDirectory).hosts
     }
 
     /// 文件不存在不算问题(还没写过 config 的新用户),返回空结果
-    static func parseFileDetailed(at path: String) -> SSHConfigParseResult {
-        guard FileManager.default.fileExists(atPath: path) else { return SSHConfigParseResult() }
+    static func parseFileDetailed(at path: String, homeDirectory: String = NSHomeDirectory()) -> SSHConfigParseResult {
+        let resolvedPath = expandTilde(path, home: homeDirectory)
+        guard FileManager.default.fileExists(atPath: resolvedPath) else { return SSHConfigParseResult() }
+        let rawContent: String
         do {
-            return parseDetailed(try String(contentsOfFile: path, encoding: .utf8))
+            rawContent = try String(contentsOfFile: resolvedPath, encoding: .utf8)
         } catch {
             // 不是 UTF-8:让系统猜一次编码,再不行才作为问题上报
             var encoding = String.Encoding.utf8
-            if let text = try? String(contentsOfFile: path, usedEncoding: &encoding) {
-                return parseDetailed(text)
+            if let text = try? String(contentsOfFile: resolvedPath, usedEncoding: &encoding) {
+                rawContent = text
+            } else {
+                return SSHConfigParseResult(
+                    issues: [SSHConfigIssue(kind: .unreadable(error.localizedDescription), line: nil)]
+                )
             }
-            return SSHConfigParseResult(
-                issues: [SSHConfigIssue(kind: .unreadable(error.localizedDescription), line: nil)]
-            )
         }
+
+        let (preprocessedText, initialIssues) = preprocessTopLevelIncludes(in: rawContent, homeDirectory: homeDirectory)
+        var result = parseDetailed(preprocessedText, homeDirectory: homeDirectory)
+        if !initialIssues.isEmpty {
+            var allIssues = initialIssues
+            for issue in result.issues where !allIssues.contains(issue) {
+                allIssues.append(issue)
+            }
+            result.issues = allIssues
+        }
+        return result
     }
 
     // MARK: - 内部
+
+    /// 在文件导入路径中,展开首个有效 Host / Match 之前出现的顶层 Include 指令。
+    /// 纯文本 parseDetailed 不调用此方法,保持纯函数且不访问文件系统。
+    private static func preprocessTopLevelIncludes(
+        in text: String,
+        homeDirectory: String
+    ) -> (text: String, initialIssues: [SSHConfigIssue]) {
+        var outputLines: [String] = []
+        var initialIssues: [SSHConfigIssue] = []
+        var seenHostOrMatch = false
+
+        for rawLine in text.components(separatedBy: .newlines) {
+            let line = rawLine.trimmingCharacters(in: .whitespaces)
+            guard !line.isEmpty, !line.hasPrefix("#") else {
+                outputLines.append(rawLine)
+                continue
+            }
+
+            let (key, value) = splitKeyValue(line)
+            if key == "host" || key == "match" {
+                seenHostOrMatch = true
+                outputLines.append(rawLine)
+                continue
+            }
+
+            if !seenHostOrMatch && key == "include" {
+                if let includedContents = resolveInclude(value: value, homeDirectory: homeDirectory, issues: &initialIssues) {
+                    outputLines.append(includedContents)
+                } else {
+                    // 无法展开或不在支持范围内,保留原 Include 行由后续 parseDetailed 记录 issue
+                    outputLines.append(rawLine)
+                }
+            } else {
+                outputLines.append(rawLine)
+            }
+        }
+
+        return (outputLines.joined(separator: "\n"), initialIssues)
+    }
+
+    private static func resolveInclude(
+        value: String,
+        homeDirectory: String,
+        issues: inout [SSHConfigIssue]
+    ) -> String? {
+        let expandedPath = expandTilde(value, home: homeDirectory)
+
+        // 仅支持绝对路径(含 ~ 展开后)
+        guard expandedPath.hasPrefix("/") else { return nil }
+
+        if expandedPath.contains("*") {
+            // Glob 模式:仅支持 *.conf 形式的文件匹配
+            let dirPath = (expandedPath as NSString).deletingLastPathComponent
+            let pattern = (expandedPath as NSString).lastPathComponent
+
+            // 目录路径本身不得含通配符,文件名通配须为 *.conf
+            guard !dirPath.contains("*") && !dirPath.contains("?") else { return nil }
+
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: dirPath, isDirectory: &isDir), isDir.boolValue else {
+                return nil
+            }
+
+            guard let entries = try? FileManager.default.contentsOfDirectory(atPath: dirPath) else {
+                return nil
+            }
+
+            let matchedEntries = entries.filter { entry in
+                guard !entry.hasPrefix(".") else { return false }
+                guard entry.hasSuffix(".conf") else { return false }
+                guard wildcardMatch(entry, pattern: pattern) else { return false }
+                let fullPath = (dirPath as NSString).appendingPathComponent(entry)
+                var itemIsDir: ObjCBool = false
+                guard FileManager.default.fileExists(atPath: fullPath, isDirectory: &itemIsDir), !itemIsDir.boolValue else {
+                    return false
+                }
+                return true
+            }.sorted()
+
+            guard !matchedEntries.isEmpty else { return nil }
+
+            var contents: [String] = []
+            for entry in matchedEntries {
+                let fullPath = (dirPath as NSString).appendingPathComponent(entry)
+                if let fileContent = readFileContent(at: fullPath, issues: &issues) {
+                    contents.append(fileContent)
+                }
+            }
+            guard !contents.isEmpty else { return nil }
+            return contents.joined(separator: "\n")
+        } else {
+            // 单个绝对路径文件
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: expandedPath, isDirectory: &isDir), !isDir.boolValue else {
+                return nil
+            }
+            return readFileContent(at: expandedPath, issues: &issues)
+        }
+    }
+
+    private static func readFileContent(at path: String, issues: inout [SSHConfigIssue]) -> String? {
+        do {
+            return try String(contentsOfFile: path, encoding: .utf8)
+        } catch {
+            var encoding = String.Encoding.utf8
+            if let text = try? String(contentsOfFile: path, usedEncoding: &encoding) {
+                return text
+            }
+            issues.append(SSHConfigIssue(kind: .unreadable("\(path): \(error.localizedDescription)"), line: nil))
+            return nil
+        }
+    }
 
     private static func parseBlocks(_ text: String, issues: inout [SSHConfigIssue]) -> [Block] {
         var blocks: [Block] = []
@@ -279,9 +408,10 @@ enum SSHConfigParser {
 
     private static func expandTilde(_ path: String, home: String) -> String {
         guard path.hasPrefix("~") else { return path }
-        if path == "~" { return home }
+        let trimmedHome = home.hasSuffix("/") ? String(home.dropLast()) : home
+        if path == "~" { return trimmedHome }
         if path.hasPrefix("~/") {
-            return home + String(path.dropFirst(1))
+            return trimmedHome + String(path.dropFirst(1))
         }
         return path
     }

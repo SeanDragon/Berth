@@ -232,6 +232,289 @@ final class SSHConfigParserTests: XCTestCase {
         """
         XCTAssertTrue(SSHConfigParser.parseDetailed(config).issues.isEmpty)
     }
+
+    // MARK: - Include 指令测试
+
+    private func createTempDirectory() throws -> URL {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BerthTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+        return tempDir
+    }
+
+    /// Test A: ~/.ssh/conf.d/*.conf 通配与 ~ 展开
+    func testIncludeTildeGlobConf() throws {
+        let tempHome = try createTempDirectory()
+        let sshDir = tempHome.appendingPathComponent(".ssh")
+        let confD = sshDir.appendingPathComponent("conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        let rootConfig = "Include ~/.ssh/conf.d/*.conf\n"
+        let configFile = sshDir.appendingPathComponent("config")
+        try rootConfig.write(to: configFile, atomically: true, encoding: .utf8)
+
+        let conf1 = """
+        Host 10-home
+            HostName home.example.com
+            User dev
+            Port 2201
+        """
+        try conf1.write(to: confD.appendingPathComponent("10-home.conf"), atomically: true, encoding: .utf8)
+
+        let conf2 = """
+        Host 20-work
+            HostName work.example.com
+            User workuser
+            Port 2202
+        """
+        try conf2.write(to: confD.appendingPathComponent("20-work.conf"), atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: configFile.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.map(\.alias), ["10-home", "20-work"])
+        XCTAssertEqual(result.hosts[0].hostname, "home.example.com")
+        XCTAssertEqual(result.hosts[0].user, "dev")
+        XCTAssertEqual(result.hosts[0].port, 2201)
+        XCTAssertEqual(result.hosts[1].hostname, "work.example.com")
+        XCTAssertEqual(result.hosts[1].user, "workuser")
+        XCTAssertEqual(result.hosts[1].port, 2202)
+        XCTAssertFalse(result.issues.contains { issue in
+            if case .includeNotExpanded = issue.kind { return true }
+            return false
+        })
+    }
+
+    /// Test B: 绝对路径单文件 Include
+    func testIncludeAbsolutePathSingleFile() throws {
+        let tempDir = try createTempDirectory()
+        let workConf = tempDir.appendingPathComponent("work.conf")
+        let workContent = """
+        Host work
+            HostName work.example.com
+            User workuser
+            Port 2222
+        """
+        try workContent.write(to: workConf, atomically: true, encoding: .utf8)
+
+        let rootConf = tempDir.appendingPathComponent("root.conf")
+        let rootContent = "Include \(workConf.path)\n"
+        try rootContent.write(to: rootConf, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: rootConf.path, homeDirectory: tempDir.path)
+        XCTAssertEqual(result.hosts.map(\.alias), ["work"])
+        XCTAssertEqual(result.hosts[0].hostname, "work.example.com")
+        XCTAssertEqual(result.hosts[0].user, "workuser")
+        XCTAssertEqual(result.hosts[0].port, 2222)
+        XCTAssertTrue(result.issues.isEmpty)
+    }
+
+    /// Test C: glob 字典序与 first-obtained-value 生效
+    func testIncludeGlobLexicalOrderAndFirstObtainedValue() throws {
+        let tempHome = try createTempDirectory()
+        let confD = tempHome.appendingPathComponent(".ssh/conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        let file20 = """
+        Host web
+            HostName second.example.com
+            User second
+        """
+        try file20.write(to: confD.appendingPathComponent("20-second.conf"), atomically: true, encoding: .utf8)
+
+        let file10 = """
+        Host web
+            HostName first.example.com
+            User first
+        """
+        try file10.write(to: confD.appendingPathComponent("10-first.conf"), atomically: true, encoding: .utf8)
+
+        let rootConfigFile = tempHome.appendingPathComponent(".ssh/config")
+        try "Include ~/.ssh/conf.d/*.conf".write(to: rootConfigFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: rootConfigFile.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.count, 1)
+        // 10-first.conf 字典序在前,first obtained value 为准
+        XCTAssertEqual(result.hosts[0].hostname, "first.example.com")
+        XCTAssertEqual(result.hosts[0].user, "first")
+        XCTAssertTrue(result.issues.contains { $0.kind == .duplicateAlias("web") })
+    }
+
+    /// Test D: 纯文本 parser 依然不访问文件系统,不展开 Include
+    func testPureStringParserDoesNotExpandInclude() {
+        let config = """
+        Include ~/.ssh/conf.d/*.conf
+
+        Host foo
+            HostName foo.example.com
+        """
+        let result = SSHConfigParser.parseDetailed(config)
+        XCTAssertEqual(result.hosts.map(\.alias), ["foo"])
+        XCTAssertTrue(result.issues.contains { $0.kind == .includeNotExpanded("~/.ssh/conf.d/*.conf") })
+    }
+
+    /// Test E: Host 块内的 Include 不支持展开
+    func testIncludeInsideHostBlockNotExpanded() throws {
+        let tempDir = try createTempDirectory()
+        let extraConf = tempDir.appendingPathComponent("foo-extra.conf")
+        try "Host extra\n    HostName extra.example.com".write(to: extraConf, atomically: true, encoding: .utf8)
+
+        let rootConf = tempDir.appendingPathComponent("config")
+        let rootContent = """
+        Host foo
+            HostName foo.example.com
+            Include \(extraConf.path)
+        """
+        try rootContent.write(to: rootConf, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: rootConf.path, homeDirectory: tempDir.path)
+        XCTAssertEqual(result.hosts.map(\.alias), ["foo"])
+        XCTAssertTrue(result.issues.contains { $0.kind == .includeNotExpanded(extraConf.path) })
+    }
+
+    /// Test F: 递归 Include 不支持展开
+    func testRecursiveIncludeNotExpanded() throws {
+        let tempDir = try createTempDirectory()
+        let secondConf = tempDir.appendingPathComponent("second.conf")
+        try "Host second\n    HostName second.example.com".write(to: secondConf, atomically: true, encoding: .utf8)
+
+        let firstConf = tempDir.appendingPathComponent("first.conf")
+        let firstContent = """
+        Host first
+            HostName first.example.com
+
+        Include \(secondConf.path)
+        """
+        try firstContent.write(to: firstConf, atomically: true, encoding: .utf8)
+
+        let rootConf = tempDir.appendingPathComponent("config")
+        try "Include \(firstConf.path)".write(to: rootConf, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: rootConf.path, homeDirectory: tempDir.path)
+        XCTAssertEqual(result.hosts.map(\.alias), ["first"])
+        XCTAssertTrue(result.issues.contains { $0.kind == .includeNotExpanded(secondConf.path) })
+    }
+
+    /// Test G: 不存在 / 无匹配 Include 不 crash
+    func testIncludeNonExistentPathDoesNotCrash() throws {
+        let tempHome = try createTempDirectory()
+        let rootConf = tempHome.appendingPathComponent("config")
+        let rootContent = """
+        Include ~/.ssh/not-found/*.conf
+
+        Host local
+            HostName local.example.com
+        """
+        try rootContent.write(to: rootConf, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: rootConf.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.map(\.alias), ["local"])
+        XCTAssertTrue(result.issues.contains { $0.kind == .includeNotExpanded("~/.ssh/not-found/*.conf") })
+    }
+
+    /// Test H: 仅匹配 .conf 文件并跳过子目录与非 .conf 文件
+    func testIncludeGlobSkipsNonConfAndDirectories() throws {
+        let tempHome = try createTempDirectory()
+        let confD = tempHome.appendingPathComponent(".ssh/conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        try "Host valid\n    HostName valid.example.com".write(to: confD.appendingPathComponent("10-valid.conf"), atomically: true, encoding: .utf8)
+        try "# Ignore me".write(to: confD.appendingPathComponent("README.md"), atomically: true, encoding: .utf8)
+        try FileManager.default.createDirectory(at: confD.appendingPathComponent("subdir.conf"), withIntermediateDirectories: true)
+
+        let rootConf = tempHome.appendingPathComponent(".ssh/config")
+        try "Include ~/.ssh/conf.d/*.conf".write(to: rootConf, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: rootConf.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.map(\.alias), ["valid"])
+        XCTAssertFalse(result.issues.contains { issue in
+            if case .includeNotExpanded = issue.kind { return true }
+            return false
+        })
+    }
+
+    /// Test I: Included Host 接收 Host * fallback 选项
+    func testIncludedHostsReceiveWildcardFallbackOptions() throws {
+        let tempHome = try createTempDirectory()
+        let confD = tempHome.appendingPathComponent(".ssh/conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        let hostsConf = """
+        Host nas
+            HostName nas.example.com
+        """
+        try hostsConf.write(to: confD.appendingPathComponent("10-hosts.conf"), atomically: true, encoding: .utf8)
+
+        let rootConfig = """
+        Include ~/.ssh/conf.d/*.conf
+
+        Host *
+            User fallback-user
+            Port 2222
+            IdentityFile ~/.ssh/id_ed25519
+        """
+        let configFile = tempHome.appendingPathComponent(".ssh/config")
+        try rootConfig.write(to: configFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: configFile.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.count, 1)
+        XCTAssertEqual(result.hosts[0].alias, "nas")
+        XCTAssertEqual(result.hosts[0].hostname, "nas.example.com")
+        XCTAssertEqual(result.hosts[0].user, "fallback-user")
+        XCTAssertEqual(result.hosts[0].port, 2222)
+        XCTAssertEqual(result.hosts[0].identityFile, "\(tempHome.path)/.ssh/id_ed25519")
+        XCTAssertFalse(result.issues.contains { issue in
+            if case .includeNotExpanded = issue.kind { return true }
+            return false
+        })
+    }
+
+    /// Test J: Specific values 优先于 fallback,缺省项继承 Host * fallback
+    func testIncludedHostSpecificOptionsOverrideWildcardFallback() throws {
+        let tempHome = try createTempDirectory()
+        let confD = tempHome.appendingPathComponent(".ssh/conf.d")
+        try FileManager.default.createDirectory(at: confD, withIntermediateDirectories: true)
+
+        let hostsConf = """
+        Host nas
+            HostName nas.example.com
+
+        Host server
+            HostName server.example.com
+            User root
+            Port 2200
+        """
+        try hostsConf.write(to: confD.appendingPathComponent("10-hosts.conf"), atomically: true, encoding: .utf8)
+
+        let rootConfig = """
+        Include ~/.ssh/conf.d/*.conf
+
+        Host *
+            User fallback-user
+            Port 2222
+            IdentityFile ~/.ssh/id_ed25519
+        """
+        let configFile = tempHome.appendingPathComponent(".ssh/config")
+        try rootConfig.write(to: configFile, atomically: true, encoding: .utf8)
+
+        let result = SSHConfigParser.parseFileDetailed(at: configFile.path, homeDirectory: tempHome.path)
+        XCTAssertEqual(result.hosts.count, 2)
+
+        XCTAssertEqual(result.hosts[0].alias, "nas")
+        XCTAssertEqual(result.hosts[0].hostname, "nas.example.com")
+        XCTAssertEqual(result.hosts[0].user, "fallback-user")
+        XCTAssertEqual(result.hosts[0].port, 2222)
+        XCTAssertEqual(result.hosts[0].identityFile, "\(tempHome.path)/.ssh/id_ed25519")
+
+        XCTAssertEqual(result.hosts[1].alias, "server")
+        XCTAssertEqual(result.hosts[1].hostname, "server.example.com")
+        XCTAssertEqual(result.hosts[1].user, "root")
+        XCTAssertEqual(result.hosts[1].port, 2200)
+        XCTAssertEqual(result.hosts[1].identityFile, "\(tempHome.path)/.ssh/id_ed25519")
+
+        XCTAssertTrue(result.issues.isEmpty)
+    }
 }
 
 final class KeychainStoreTests: XCTestCase {
