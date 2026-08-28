@@ -29,7 +29,7 @@ Berth is a Swift-native SSH client for macOS. It keeps the directness of a termi
 | Capability | What it provides |
 | --- | --- |
 | Terminal workspace | Tabs, nested split panes, search, themes, automatic reconnect, and connection reuse; side tools (AI, SFTP, server info, Docker, snippets) live in one Xcode-style inspector rail. |
-| Connections | Password, private-key, ssh-agent, and keyboard-interactive authentication; ssh_config import, jump hosts, and HTTP/SOCKS5 proxies. |
+| Connections | Password, private-key, ssh-agent, and keyboard-interactive authentication; ssh_config import (including `Include` directives), jump hosts, and HTTP/SOCKS5 proxies. |
 | Workspaces | Group hosts into Arc-style workspaces — a dot switcher and trackpad swipe page the sidebar; assignments sync via iCloud, and with no workspaces the flat list stays as is. |
 | Networking | Local, remote, and dynamic SOCKS5 port forwarding for temporary debugging and private-network access. |
 | SFTP file panel | Browse, upload, download, preview, and edit through the active SSH connection; drag files in either direction and download folders recursively. |

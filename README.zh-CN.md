@@ -29,7 +29,7 @@ Berth 是一款 Swift 原生 macOS SSH 客户端，适合需要频繁切换主�
 | 能力 | 说明 |
 | --- | --- |
 | 终端工作区 | 标签页、可嵌套分屏、搜索、主题、断线自动重连与会话复用；AI、SFTP、服务器信息、Docker、片段收纳进一条 Xcode 式检查器栏。 |
-| 连接管理 | 密码、私钥、ssh-agent 与 keyboard-interactive 认证；支持 ssh_config 导入、跳板机、HTTP/SOCKS5 代理。 |
+| 连接管理 | 密码、私钥、ssh-agent 与 keyboard-interactive 认证；支持 ssh_config 导入（含 `Include` 指令展开）、跳板机、HTTP/SOCKS5 代理。 |
 | 工作空间 | 主机按工作空间分组（Arc 式）：侧栏底部小圆点切换、触控板横扫翻页，归属随 iCloud 同步；不建工作空间则保持原有扁平列表。 |
 | 网络工具 | 本地、远程与动态 SOCKS5 端口转发，方便临时调试和内网访问。 |
 | SFTP 文件面板 | 复用当前 SSH 会话浏览、上传、下载、预览和编辑远程文件；支持拖放文件与递归下载文件夹。 |
