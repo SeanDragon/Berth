@@ -18,9 +18,9 @@
   macOS 15+(建议 macOS 26)· Universal · Developer ID 签名 · Apple 公证
 </p>
 
-![Berth 终端工作区：fastfetch 与 htop 分屏](docs/assets/shots/terminal-htop-1.8.5.png)
+![Berth 终端工作区：fastfetch 与 htop 分屏](docs/assets/shots/terminal-htop-1.9.2.png)
 
-![Berth 服务器仪表盘：所有主机实时资源一屏看完](docs/assets/shots/dashboard-1.8.5.png)
+![Berth 服务器仪表盘：所有主机实时资源一屏看完](docs/assets/shots/dashboard-1.9.2.png)
 
 ## 为远程工作而设计
 

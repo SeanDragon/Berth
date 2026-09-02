@@ -18,9 +18,9 @@
   macOS 15+ (macOS 26 recommended) · Universal · Developer ID signed · Apple notarized
 </p>
 
-![Berth terminal workspace with fastfetch and htop](docs/assets/shots/terminal-htop-1.8.5.png)
+![Berth terminal workspace with fastfetch and htop](docs/assets/shots/terminal-htop-1.9.2.png)
 
-![Berth server dashboard with live metrics for every host](docs/assets/shots/dashboard-1.8.5.png)
+![Berth server dashboard with live metrics for every host](docs/assets/shots/dashboard-1.9.2.png)
 
 ## Built for remote work
 

@@ -32,6 +32,7 @@ enum DemoScene {
         real.osName = "Alpine Linux"
         context.insert(real)
         var connectableIDs = [real.id]
+        var connectableHosts = [real]
 
         let extras: [(String, String, String, TagColor, String)] = [
             ("atlas-staging", "staging.internal", "ops", .orange, "Ubuntu 24.04"),
@@ -48,7 +49,10 @@ enum DemoScene {
                             tagColor: entry.3, sortOrder: index + 1)
             host.osName = entry.4
             context.insert(host)
-            if connectable { connectableIDs.append(host.id) }
+            if connectable {
+                connectableIDs.append(host.id)
+                connectableHosts.append(host)
+            }
         }
 
         do {
@@ -68,6 +72,20 @@ enum DemoScene {
         }
 
         let manager = SessionManager.shared
+
+        // 仪表盘不会替用户确认首次见到的 host key。素材场景中的主机全部是
+        // 本地 Docker 测试机，因此先逐台走一次和真实首次连接相同的确认流程，
+        // 避免文档图把“需确认”误呈现为“在线”。
+        for host in connectableHosts {
+            let warmup = manager.open(spec: HostSpec(host: host))
+            guard await waitForConnected(warmup, timeout: 20) else {
+                manager.closePane(warmup)
+                return
+            }
+            manager.closePane(warmup)
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+
         let session = manager.open(spec: HostSpec(host: real))
         guard await waitForConnected(session, timeout: 20) else { return }
 
