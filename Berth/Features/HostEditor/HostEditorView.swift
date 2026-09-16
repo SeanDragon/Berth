@@ -37,6 +37,8 @@ struct HostEditorView: View {
     @State private var tagColor: TagColor = .none
     @State private var isProduction = false
     @State private var startupCommands = ""
+    @State private var switchUser = ""
+    @State private var switchUserPassword = ""
     @State private var note = ""
     @State private var macAddress = ""
     @State private var validationMessage: String?
@@ -179,6 +181,20 @@ struct HostEditorView: View {
                         .lineLimit(2...4)
                 }
 
+                Section("连接后切换用户") {
+                    TextField("su 到用户", text: $switchUser, prompt: Text("留空不切换,例如 appuser").foregroundStyle(.quaternary))
+                        .autocorrectionDisabled()
+                    if !switchUser.trimmingCharacters(in: .whitespaces).isEmpty {
+                        SecureField(
+                            "su 密码",
+                            text: $switchUserPassword,
+                            prompt: Text(isEditing ? "留空保持不变;没存过就连接后手动输入" : "留空则连接后手动输入").foregroundStyle(.quaternary)
+                        )
+                    }
+                    Text("适合禁止直接登录、只能 su 过去的账号:连上后自动执行 su - 用户,等到密码提示再从钥匙串填入,不会盲发;分屏新开的 shell 也会切换。密码只进钥匙串。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 Section("连接后自动执行") {
                     TextField(
                         "启动命令",
@@ -248,6 +264,7 @@ struct HostEditorView: View {
         tagColor = host.tagColor
         isProduction = host.isProduction
         startupCommands = host.startupCommands
+        switchUser = host.switchUser
         note = host.note
         macAddress = host.macAddress
     }
@@ -369,10 +386,16 @@ struct HostEditorView: View {
         target.tagColor = tagColor
         target.isProduction = isProduction
         target.startupCommands = startupCommands
+        target.switchUser = switchUser.trimmingCharacters(in: .whitespaces)
         target.note = note
         target.macAddress = macAddress.trimmingCharacters(in: .whitespaces)
 
         do {
+            if target.switchUser.isEmpty {
+                try? KeychainStore.delete(account: KeychainStore.switchUserPasswordAccount(for: target.id))
+            } else if !switchUserPassword.isEmpty {
+                try KeychainStore.save(switchUserPassword, account: KeychainStore.switchUserPasswordAccount(for: target.id))
+            }
             if authMethod == .password {
                 if !password.isEmpty {
                     try KeychainStore.save(password, account: KeychainStore.passwordAccount(for: target.id))

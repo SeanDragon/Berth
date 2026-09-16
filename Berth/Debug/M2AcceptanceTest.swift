@@ -697,6 +697,106 @@ enum M2AcceptanceTest {
         }
     }
 
+    /// su 切换用户验收(issue #35):BERTH_SWITCHUSER_AUTOTEST=1。测试容器的 su 不是 suid,
+    /// 用一个行为一致的假 su(打 Password: 提示、关回显读一行、对了起 bash)放进 ~/bin,并写
+    /// ~/.bash_profile 让登录 shell 优先找到它。
+    /// 验证:提示出现后才发密码、密码不出现在屏幕上、切换成功、启动命令落在切换后的 shell;
+    /// 没存密码时只发 su,停在提示符等人工输入。
+    static func runSwitchUserIfRequested(container: ModelContainer) async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BERTH_SWITCHUSER_AUTOTEST"] == "1",
+              let host = env["BERTH_TEST_HOST"],
+              let user = env["BERTH_TEST_USER"],
+              let dumpBase = env["BERTH_TEST_DUMP"] else { return }
+        func log(_ line: String) {
+            try? line.write(toFile: dumpBase + ".switchuser.log", atomically: true, encoding: .utf8)
+        }
+        let port = Int(env["BERTH_TEST_PORT"] ?? "22") ?? 22
+        let transientPassword = env["BERTH_TEST_PASSWORD"]
+        UserDefaults.standard.set(false, forKey: SettingsKeys.requireTouchIDForKeys)
+        func makeSpec(_ label: String) -> HostSpec {
+            HostSpec(
+                hostID: UUID(), label: label, hostname: host, port: port, username: user,
+                authMethod: env["BERTH_TEST_KEYFILE"] != nil ? .privateKeyFile : .password,
+                privateKeyPath: env["BERTH_TEST_KEYFILE"]
+            )
+        }
+        func waitConnected(_ session: TerminalSession) async -> Bool {
+            let deadline = Date().addingTimeInterval(20)
+            while Date() < deadline {
+                if session.hostKeyPrompt != nil { session.resolveHostKeyPrompt(accepted: true) }
+                if case .connected = session.state { return true }
+                if case .disconnected = session.state { return false }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            return false
+        }
+        func screen(_ session: TerminalSession) -> String {
+            String(decoding: session.terminalView.getTerminal().getBufferAsData(kind: .normal), as: UTF8.self)
+        }
+
+        // 准备假 su(用 exec 通道,不经 PTY 回显)
+        let setup = SessionManager.shared.open(spec: makeSpec("su-setup"), transientPassword: transientPassword)
+        guard await waitConnected(setup) else { log("SWITCHUSER_FAIL 准备会话连不上"); return }
+        let fakeSu = """
+        mkdir -p ~/bin && cat > ~/bin/su <<'EOF'
+        #!/bin/sh
+        printf 'Password: '
+        stty -echo 2>/dev/null; read -r pw; stty echo 2>/dev/null; echo
+        if [ "$pw" = "berth-su-secret" ]; then echo "BERTH_SU_OK user=$2"; exec /bin/bash; fi
+        echo 'su: Authentication failure'; exit 1
+        EOF
+        chmod +x ~/bin/su && printf 'export PATH="$HOME/bin:$PATH"\\n' > ~/.bash_profile && echo BERTH_SETUP_DONE
+        """
+        let prepared = await setup.runAICommand(fakeSu)
+        setup.shutdown()
+        guard prepared?.output.contains("BERTH_SETUP_DONE") == true else {
+            log("SWITCHUSER_FAIL 假 su 准备失败 \(prepared?.output ?? "nil")"); return
+        }
+        func cleanup() async {
+            let session = SessionManager.shared.open(spec: makeSpec("su-cleanup"), transientPassword: transientPassword)
+            if await waitConnected(session) { _ = await session.runAICommand("rm -f ~/bin/su ~/.bash_profile") }
+            session.shutdown()
+        }
+
+        // 场景 1:存了密码 → 提示出现后作答 → 切换成功 → 启动命令在新 shell 里执行
+        var spec = makeSpec("su-test")
+        spec.switchUser = user
+        spec.startupCommands = "echo BERTH_AFTER_SU_$(id -un)"
+        try? KeychainStore.save("berth-su-secret", account: KeychainStore.switchUserPasswordAccount(for: spec.hostID))
+        defer { try? KeychainStore.delete(account: KeychainStore.switchUserPasswordAccount(for: spec.hostID)) }
+        let session = SessionManager.shared.open(spec: spec, transientPassword: transientPassword)
+        guard await waitConnected(session) else { log("SWITCHUSER_FAIL 场景1连不上"); await cleanup(); return }
+        var text = ""
+        let deadline = Date().addingTimeInterval(15)
+        while Date() < deadline {
+            text = screen(session)
+            if text.contains("BERTH_AFTER_SU_\(user)") { break }
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+        session.shutdown()
+        let promptAt = text.range(of: "Password:")?.lowerBound
+        let switchedAt = text.range(of: "BERTH_SU_OK user=\(user)")?.lowerBound
+        let promptFirst = promptAt != nil && switchedAt != nil && promptAt! < switchedAt!
+        let startupAfterSu = text.contains("BERTH_AFTER_SU_\(user)")
+        let secretHidden = !text.contains("berth-su-secret")
+
+        // 场景 2:没存密码 → 只发 su,停在提示符等人工输入
+        var bare = makeSpec("su-noauth")
+        bare.switchUser = user
+        let session2 = SessionManager.shared.open(spec: bare, transientPassword: transientPassword)
+        guard await waitConnected(session2) else { log("SWITCHUSER_FAIL 场景2连不上"); await cleanup(); return }
+        try? await Task.sleep(for: .seconds(3))
+        let text2 = screen(session2)
+        let waitedForHuman = text2.contains("Password:") && !text2.contains("BERTH_SU_OK") && !text2.contains("Authentication failure")
+        session2.sendText("\u{03}")
+        session2.shutdown()
+
+        await cleanup()
+        let ok = promptFirst && startupAfterSu && secretHidden && waitedForHuman
+        log("\(ok ? "SWITCHUSER_OK" : "SWITCHUSER_FAIL") promptFirst=\(promptFirst) startupAfterSu=\(startupAfterSu) secretHidden=\(secretHidden) waitedForHuman=\(waitedForHuman) screen1=\(text.suffix(400).debugDescription) screen2=\(text2.suffix(200).debugDescription)")
+    }
+
     /// AI 命令执行验收:BERTH_AI_AUTOTEST=1。连目标后走 runAICommand(AI 助手执行命令的通道):
     /// 验证 stdout/stderr 合并、非零退出码不抛错而是被解析出来、PTY 不受影响。
     static func runAICommandIfRequested(container: ModelContainer) async {
