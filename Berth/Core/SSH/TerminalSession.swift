@@ -245,6 +245,7 @@ final class TerminalSession: Identifiable {
             // 会话结束时质询弹窗必须收掉:服务器可能在用户找手机输 MFA 码时超时断开
             //(LoginGraceTime),不收的话 sheet 悬在死管道上,提交毫无反应
             resolveKeyboardInteractivePrompt(answers: nil)
+            resolveOutputExpectation(matched: false)
             stopPortForwards()
             stopLogging()
             stdinWriter?.finish()
@@ -546,6 +547,67 @@ final class TerminalSession: Identifiable {
 
     nonisolated private static func shellQuote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+
+    // MARK: - 连接后切换用户(issue #35)
+
+    /// su 密码提示的特征片段(不区分大小写):英文 Password/password、中文,以及常见几种语言
+    private static let passwordPromptHints = ["assword", "密码", "passwort", "mot de passe", "contraseña", "パスワード", "пароль"]
+
+    /// 连接后 `su - 用户`:等到密码提示再从 Keychain 取密码作答,等不到(10 秒)就不盲发,
+    /// 密码从不进 startupCommands、不落盘。没存密码就只发 su,提示符留给用户手输。
+    /// 分屏/复制标签开的新 shell 同样切换,否则那个 pane 会停在登录用户上。
+    private func runSwitchUserIfNeeded() async {
+        let target = spec.switchUser.trimmingCharacters(in: .whitespaces)
+        guard !target.isEmpty, !spec.isLocal else { return }
+        sendText("su - \(Self.shellQuote(target))\n")
+        let prompted = await awaitOutput(containingAny: Self.passwordPromptHints, timeout: .seconds(10))
+        guard prompted, !Task.isCancelled,
+              let password = try? KeychainStore.read(account: KeychainStore.switchUserPasswordAccount(for: spec.hostID)),
+              !password.isEmpty else { return }
+        sendText(password + "\n")
+        // 给 su 起新 shell 的时间,后面的 cd / 启动命令才落在切换后的 shell 里
+        try? await Task.sleep(for: .milliseconds(800))
+    }
+
+    // MARK: - 输出期待(登录脚本用)
+
+    private struct OutputExpectation {
+        let patterns: [String]
+        let continuation: CheckedContinuation<Bool, Never>
+    }
+    @ObservationIgnored private var outputExpectation: OutputExpectation?
+    @ObservationIgnored private var expectationBuffer = ""
+
+    /// 等输出里出现任一片段(不区分大小写,已去 ANSI);超时返回 false。
+    /// 同一时刻只有一个等待者,新等待者会把旧的按未匹配结束。
+    func awaitOutput(containingAny patterns: [String], timeout: Duration) async -> Bool {
+        resolveOutputExpectation(matched: false)
+        let timeoutTask = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            self?.resolveOutputExpectation(matched: false)
+        }
+        defer { timeoutTask.cancel() }
+        return await withCheckedContinuation { continuation in
+            outputExpectation = OutputExpectation(patterns: patterns, continuation: continuation)
+        }
+    }
+
+    private func resolveOutputExpectation(matched: Bool) {
+        guard let pending = outputExpectation else { return }
+        outputExpectation = nil
+        expectationBuffer = ""
+        pending.continuation.resume(returning: matched)
+    }
+
+    private func matchOutputExpectation(bytes: [UInt8]) {
+        guard let pending = outputExpectation else { return }
+        expectationBuffer += ANSI.strip(String(decoding: bytes, as: UTF8.self))
+        if pending.patterns.contains(where: { expectationBuffer.localizedCaseInsensitiveContains($0) }) {
+            resolveOutputExpectation(matched: true)
+        } else if expectationBuffer.count > 4096 {
+            expectationBuffer = String(expectationBuffer.suffix(2048))
+        }
     }
 
     /// 远端当前工作目录(OSC 7 上报;未启用命令集成时为 nil)。AI 助手提示词用。
@@ -998,27 +1060,6 @@ final class TerminalSession: Identifiable {
                 }
             }
 
-            // 重连恢复工作目录:先 cd 回上次目录
-            if let dir = restoreDirOnConnect, !dir.isEmpty {
-                restoreDirOnConnect = nil
-                try? await Task.sleep(for: .milliseconds(300))
-                let quoted = "'" + dir.replacingOccurrences(of: "'", with: "'\\''") + "'"
-                try? await outbound.write(ByteBuffer(bytes: Array((" cd " + quoted + "\n").utf8)))
-            }
-
-            // 连接后自动执行命令(逐行发送,自动补回车)。分屏借用会话不重复执行。
-            let startup = spec.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !isBorrower, !startup.isEmpty {
-                // 稍等 shell 提示符就绪再发,避免被吞
-                try? await Task.sleep(for: .milliseconds(400))
-                for line in startup.split(whereSeparator: \.isNewline) {
-                    let cmd = line.trimmingCharacters(in: .whitespaces)
-                    guard !cmd.isEmpty else { continue }
-                    try? await outbound.write(ByteBuffer(bytes: Array((cmd + "\n").utf8)))
-                    try? await Task.sleep(for: .milliseconds(120))
-                }
-            }
-
             // 单一消费者串行写入,保证按键与 resize 的顺序
             let stdinPump = Task {
                 for await event in stream {
@@ -1031,6 +1072,34 @@ final class TerminalSession: Identifiable {
                 }
             }
             defer { stdinPump.cancel() }
+
+            // 登录后的自动动作(su 切换用户 → 恢复工作目录 → 启动命令)要边看输出边发,
+            // 所以和下面的读循环并行跑;都经 stdin 流写入,与按键同一条队列
+            let restoreDir = restoreDirOnConnect
+            restoreDirOnConnect = nil
+            let loginActions = Task { [weak self] in
+                guard let self else { return }
+                // 稍等 shell 提示符就绪再发,避免被吞
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                await self.runSwitchUserIfNeeded()
+                // 重连恢复工作目录:先 cd 回上次目录
+                if let dir = restoreDir, !dir.isEmpty {
+                    let quoted = "'" + dir.replacingOccurrences(of: "'", with: "'\\''") + "'"
+                    self.sendText(" cd " + quoted + "\n")
+                }
+                // 连接后自动执行命令(逐行发送,自动补回车)。分屏借用会话不重复执行。
+                let startup = self.spec.startupCommands.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !self.isBorrower, !startup.isEmpty {
+                    for line in startup.split(whereSeparator: \.isNewline) {
+                        let cmd = line.trimmingCharacters(in: .whitespaces)
+                        guard !cmd.isEmpty, !Task.isCancelled else { continue }
+                        self.sendText(cmd + "\n")
+                        try? await Task.sleep(for: .milliseconds(120))
+                    }
+                }
+            }
+            defer { loginActions.cancel() }
 
             for try await chunk in inbound {
                 let buffer: ByteBuffer
@@ -1078,6 +1147,7 @@ final class TerminalSession: Identifiable {
             terminalView.feed(byteArray: bytes[fed...])
         }
         matchTriggers(bytes: bytes)
+        matchOutputExpectation(bytes: bytes)
         if logHandle != nil, let text = String(bytes: bytes, encoding: .utf8) {
             appendToLog(text)
         }

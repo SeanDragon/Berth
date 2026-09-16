@@ -35,6 +35,8 @@ enum KeychainStore {
     static func passwordAccount(for hostID: UUID) -> String { "host.\(hostID.uuidString).password" }
     static func passphraseAccount(for hostID: UUID) -> String { "host.\(hostID.uuidString).passphrase" }
     static func proxyPasswordAccount(for hostID: UUID) -> String { "host.\(hostID.uuidString).proxyPassword" }
+    /// 连接后 su 切换用户的密码(issue #35)
+    static func switchUserPasswordAccount(for hostID: UUID) -> String { "host.\(hostID.uuidString).switchUserPassword" }
 
     // MARK: 基本操作
 
@@ -138,5 +140,6 @@ enum KeychainStore {
         try? delete(account: passwordAccount(for: hostID))
         try? delete(account: passphraseAccount(for: hostID))
         try? delete(account: proxyPasswordAccount(for: hostID))
+        try? delete(account: switchUserPasswordAccount(for: hostID))
     }
 }

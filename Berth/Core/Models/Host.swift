@@ -54,6 +54,9 @@ final class Host {
     var isProduction: Bool = false
     /// 连接建立后自动执行的命令(每行一条,自动补回车)
     var startupCommands: String = ""
+    /// 连接后 su 切换到的用户(issue #35:禁止直登、只能 su 过去的账号);空 = 不切换。
+    /// su 密码只进 Keychain(KeychainStore.switchUserPasswordAccount)
+    var switchUser: String = ""
     /// 连接后探测到的系统名(/etc/os-release PRETTY_NAME),驱动侧栏系统徽章;空 = 未探测
     var osName: String = ""
     /// MAC 地址(用于 Wake-on-LAN,局域网唤醒);空 = 未设置

@@ -59,6 +59,8 @@ struct HostSpec: Equatable, Sendable {
     var tagColorRaw: String = TagColor.none.rawValue
     /// 连接建立后自动执行的命令(每行一条)
     var startupCommands: String = ""
+    /// 连接后 su 切换到的用户;空 = 不切换(issue #35)
+    var switchUser: String = ""
     /// 本地 Shell 会话(不走 SSH,直接 fork 本机 shell)。macOS 专用;iOS 不提供入口。
     var isLocal: Bool = false
 
@@ -107,6 +109,7 @@ struct HostSpec: Equatable, Sendable {
         self.isProduction = host.isProduction
         self.tagColorRaw = host.tagColorRaw
         self.startupCommands = host.startupCommands
+        self.switchUser = host.switchUser
         self.jump = []
         self.forwards = (host.portForwards ?? [])
             .filter(\.enabled)
