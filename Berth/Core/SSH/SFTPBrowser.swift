@@ -167,8 +167,11 @@ final class SFTPBrowser {
     private var resumePath: String?
     /// 通道死掉后是否已经自动重开过一次(成功列目录即复位),服务端每次都秒断时不至于无限循环
     private var reopenedAfterFailure = false
-    /// 列目录看门狗:远端目录挂在僵死的 NFS 上时 READDIR 永远不回,不能让面板一直转圈
+    /// 列目录看门狗:远端目录挂在僵死的 NFS 上时 READDIR 永远不回,不能让面板一直转圈。
+    /// 到点不直接判死——大目录在高延迟链路上要几百次 READDIR 往返——而是先在同一通道上 stat 探活
     static let listingTimeout: Duration = .seconds(20)
+    /// 探活 stat 的等待上限;stat 也不回才算通道挂了
+    static let probeTimeout: Duration = .seconds(10)
 
     init(
         initialPath: String? = nil,
@@ -286,15 +289,22 @@ final class SFTPBrowser {
         }
         state = .loading
         let listing = Task { try await sftp.listDirectory(atPath: newPath) }
-        guard let outcome = await Self.result(of: listing, within: Self.listingTimeout) else {
-            // 服务器不回包:关掉通道让挂起的请求失败,下次刷新自动开一条新通道
+        var outcome = await Self.result(of: listing, within: Self.listingTimeout)
+        while outcome == nil {
+            // 超时不等于死了:先发一个 stat 探活(任何回应,包括出错,都说明通道活着,只是目录大/链路慢),
+            // 有回应就继续等;stat 也不回才关掉通道让挂起的请求失败,下次刷新自动开一条新通道
             guard self.sftp === sftp else { return }
-            dropClient()
-            state = .failed(String(localized: "SFTP 无响应,点刷新重新打开。"))
-            return
+            let probe = Task { try await sftp.getAttributes(at: newPath) }
+            guard await Self.result(of: probe, within: Self.probeTimeout) != nil else {
+                guard self.sftp === sftp else { return }
+                dropClient()
+                state = .failed(String(localized: "SFTP 无响应,点刷新重新打开。"))
+                return
+            }
+            outcome = await Self.result(of: listing, within: Self.listingTimeout)
         }
         // 等待期间通道可能已被换掉(断线重连/超时重开),迟到的结果不能覆盖新通道的状态
-        guard self.sftp === sftp else { return }
+        guard self.sftp === sftp, let outcome else { return }
         switch outcome {
         case .success(let names):
             let components = names.flatMap(\.components)
@@ -1311,7 +1321,11 @@ enum RemoteEditAssets {
         return reference
     }
 
-    /// 相对引用 → 远端绝对路径;`..` 越过根目录的丢弃
+    /// 编辑器会自动读取的目录:恶意文档引用 `.vscode/tasks.json` 之类不该被拉进镜像工作区
+    /// (VS Code 的 Restricted Mode 本身也挡,这里不给这个口子);`.github/logo.png` 这类照常
+    static let skippedDirectories: Set<String> = [".vscode", ".git", ".idea"]
+
+    /// 相对引用 → 远端绝对路径;`..` 越过根目录的丢弃,落在编辑器配置目录里的丢弃
     static func resolve(_ reference: String, relativeTo directory: String) -> String? {
         var stack = directory.split(separator: "/").map(String.init)
         for part in reference.split(separator: "/") {
@@ -1323,7 +1337,9 @@ enum RemoteEditAssets {
             default: stack.append(String(part))
             }
         }
-        guard !stack.isEmpty else { return nil }
+        guard !stack.isEmpty,
+              !stack.dropLast().contains(where: { skippedDirectories.contains($0.lowercased()) })
+        else { return nil }
         return "/" + stack.joined(separator: "/")
     }
 

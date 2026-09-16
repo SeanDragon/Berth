@@ -757,8 +757,8 @@ enum M2AcceptanceTest {
     /// su 切换用户验收(issue #35):BERTH_SWITCHUSER_AUTOTEST=1。测试容器的 su 不是 suid,
     /// 用一个行为一致的假 su(打 Password: 提示、关回显读一行、对了起 bash)放进 ~/bin,并写
     /// ~/.bash_profile 让登录 shell 优先找到它。
-    /// 验证:提示出现后才发密码、密码不出现在屏幕上、切换成功、启动命令落在切换后的 shell;
-    /// 没存密码时只发 su,停在提示符等人工输入。
+    /// 验证:提示出现后才发密码(假 su 先打一行 PAM 式「密码将过期」诱饵,匹配必须锚定到停在行尾的
+    /// 真提示)、密码不出现在屏幕上、切换成功、启动命令落在切换后的 shell;没存密码时只发 su,停在提示符等人工输入。
     static func runSwitchUserIfRequested(container: ModelContainer) async {
         let env = ProcessInfo.processInfo.environment
         guard env["BERTH_SWITCHUSER_AUTOTEST"] == "1",
@@ -798,6 +798,7 @@ enum M2AcceptanceTest {
         let fakeSu = """
         mkdir -p ~/bin && cat > ~/bin/su <<'EOF'
         #!/bin/sh
+        echo 'Warning: your password will expire in 3 days'
         printf 'Password: '
         stty -echo 2>/dev/null; read -r pw; stty echo 2>/dev/null; echo
         if [ "$pw" = "berth-su-secret" ]; then echo "BERTH_SU_OK user=$2"; exec /bin/bash; fi

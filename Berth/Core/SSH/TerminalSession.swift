@@ -551,8 +551,18 @@ final class TerminalSession: Identifiable {
 
     // MARK: - 连接后切换用户(issue #35)
 
-    /// su 密码提示的特征片段(不区分大小写):英文 Password/password、中文,以及常见几种语言
-    private static let passwordPromptHints = ["assword", "密码", "passwort", "mot de passe", "contraseña", "パスワード", "пароль"]
+    /// su/sudo 的密码提示:停在行尾、以冒号收尾等输入的那一行(`Password:`、`密码:`、
+    /// `[sudo] password for x:`)。PAM 的「密码将过期」、MOTD 里的 password 字样后面都有换行,
+    /// 只看最后一行就不会被它们骗到而把密码提前发出去
+    nonisolated private static let passwordPromptPattern = try! NSRegularExpression(
+        pattern: #"(?i)(password|passwort|passphrase|mot de passe|contraseña|密码|パスワード|пароль)[^\r\n]*:\s*$"#
+    )
+
+    /// 输出的最后一行是不是在等密码
+    nonisolated static func looksLikePasswordPrompt(_ lastLine: String) -> Bool {
+        let range = NSRange(location: 0, length: (lastLine as NSString).length)
+        return passwordPromptPattern.firstMatch(in: lastLine, range: range) != nil
+    }
 
     /// 连接后 `su - 用户`:等到密码提示再从 Keychain 取密码作答,等不到(10 秒)就不盲发,
     /// 密码从不进 startupCommands、不落盘。没存密码就只发 su,提示符留给用户手输。
@@ -561,7 +571,7 @@ final class TerminalSession: Identifiable {
         let target = spec.switchUser.trimmingCharacters(in: .whitespaces)
         guard !target.isEmpty, !spec.isLocal else { return }
         sendText("su - \(Self.shellQuote(target))\n")
-        let prompted = await awaitOutput(containingAny: Self.passwordPromptHints, timeout: .seconds(10))
+        let prompted = await awaitOutput(untilLastLine: Self.looksLikePasswordPrompt, timeout: .seconds(10))
         guard prompted, !Task.isCancelled,
               let password = try? KeychainStore.read(account: KeychainStore.switchUserPasswordAccount(for: spec.hostID)),
               !password.isEmpty else { return }
@@ -573,15 +583,15 @@ final class TerminalSession: Identifiable {
     // MARK: - 输出期待(登录脚本用)
 
     private struct OutputExpectation {
-        let patterns: [String]
+        let predicate: (String) -> Bool
         let continuation: CheckedContinuation<Bool, Never>
     }
     @ObservationIgnored private var outputExpectation: OutputExpectation?
     @ObservationIgnored private var expectationBuffer = ""
 
-    /// 等输出里出现任一片段(不区分大小写,已去 ANSI);超时返回 false。
+    /// 等到输出的最后一行(已去 ANSI,不含换行)满足条件;超时返回 false。
     /// 同一时刻只有一个等待者,新等待者会把旧的按未匹配结束。
-    func awaitOutput(containingAny patterns: [String], timeout: Duration) async -> Bool {
+    func awaitOutput(untilLastLine predicate: @escaping (String) -> Bool, timeout: Duration) async -> Bool {
         resolveOutputExpectation(matched: false)
         let timeoutTask = Task { [weak self] in
             try? await Task.sleep(for: timeout)
@@ -589,7 +599,7 @@ final class TerminalSession: Identifiable {
         }
         defer { timeoutTask.cancel() }
         return await withCheckedContinuation { continuation in
-            outputExpectation = OutputExpectation(patterns: patterns, continuation: continuation)
+            outputExpectation = OutputExpectation(predicate: predicate, continuation: continuation)
         }
     }
 
@@ -603,7 +613,11 @@ final class TerminalSession: Identifiable {
     private func matchOutputExpectation(bytes: [UInt8]) {
         guard let pending = outputExpectation else { return }
         expectationBuffer += ANSI.strip(String(decoding: bytes, as: UTF8.self))
-        if pending.patterns.contains(where: { expectationBuffer.localizedCaseInsensitiveContains($0) }) {
+        // 只看最后一行:提示符停在行尾等输入才算数,前面带换行的行(命令回显、MOTD、PAM 提示)不算
+        let lastLine = expectationBuffer
+            .split(omittingEmptySubsequences: false, whereSeparator: { $0 == "\n" || $0 == "\r" })
+            .last.map(String.init) ?? ""
+        if pending.predicate(lastLine) {
             resolveOutputExpectation(matched: true)
         } else if expectationBuffer.count > 4096 {
             expectationBuffer = String(expectationBuffer.suffix(2048))
