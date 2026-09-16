@@ -833,13 +833,18 @@ final class SFTPBrowser {
 
     /// 用设置里指定的编辑器打开本地临时副本;未指定(或指定的 app 已不存在)则退回
     /// LaunchServices 默认应用,与之前行为一致。
-    private static func openWithPreferredEditor(_ url: URL) {
+    private static func openWithPreferredEditor(_ url: URL, workspace: URL? = nil) {
         #if canImport(AppKit)
         let customPath = UserDefaults.standard.string(forKey: SettingsKeys.externalEditorPath) ?? ""
         if !customPath.isEmpty {
             let editorURL = URL(fileURLWithPath: customPath)
             if FileManager.default.fileExists(atPath: customPath) {
-                NSWorkspace.shared.open([url], withApplicationAt: editorURL, configuration: NSWorkspace.OpenConfiguration())
+                // 引用的资源落在文档目录之外(`../shared/x.png`)时,VS Code 一类编辑器的预览只认
+                // 工作区内的本地资源:能开文件夹的编辑器(Info.plist 声明 public.folder)就把共同
+                // 祖先目录当工作区一起打开;其余编辑器仍只开文件
+                var items = [url]
+                if let workspace, editorAcceptsFolders(at: editorURL) { items.insert(workspace, at: 0) }
+                NSWorkspace.shared.open(items, withApplicationAt: editorURL, configuration: NSWorkspace.OpenConfiguration())
                 return
             }
         }
@@ -852,12 +857,24 @@ final class SFTPBrowser {
         #endif
     }
 
+    /// 编辑器的 Info.plist 是否把文件夹声明为可打开的文档类型(VS Code、Cursor、Zed 等都声明)
+    private static func editorAcceptsFolders(at appURL: URL) -> Bool {
+        guard let types = Bundle(url: appURL)?.infoDictionary?["CFBundleDocumentTypes"] as? [[String: Any]] else {
+            return false
+        }
+        return types.contains { type in
+            ((type["LSItemContentTypes"] as? [String]) ?? []).contains { $0 == "public.folder" || $0 == "public.directory" }
+        }
+    }
+
     /// 正在编辑中的远端文件(远端绝对路径 → 状态),供 UI 显示角标
     private(set) var editing: [String: EditState] = [:]
     enum EditState: Equatable { case syncing, idle, failed }
     @ObservationIgnored private var editTasks: [String: Task<Void, Never>] = [:]
     /// 已在编辑的远端路径 → 本地临时副本(供再次点击时直接重开编辑器)
     @ObservationIgnored private var editLocalURLs: [String: URL] = [:]
+    /// 已在编辑的远端路径 → 需要一起打开的工作区目录(资源落在文档目录之外时才有)
+    @ObservationIgnored private var editWorkspaces: [String: URL] = [:]
 
     /// 双击文件时:拉到本地临时目录,用默认编辑器打开,轮询本地改动自动回传到原路径。
     /// openInEditor=false 仅供自动化验收(不真的启动编辑器),返回本地临时文件路径。
@@ -868,7 +885,7 @@ final class SFTPBrowser {
         // 已在编辑:直接重开已有本地副本,不再重复下载/新建监听
         if editTasks[remotePath] != nil {
             if let existing = editLocalURLs[remotePath], openInEditor {
-                Self.openWithPreferredEditor(existing)
+                Self.openWithPreferredEditor(existing, workspace: editWorkspaces[remotePath])
             }
             return editLocalURLs[remotePath]
         }
@@ -903,13 +920,15 @@ final class SFTPBrowser {
                     configuration: configuration
                 )
                 // 引用的资源先于编辑器打开就位,预览首次渲染就有图;拉不到不影响主文件编辑
-                await Self.fetchReferencedAssets(
+                let assets = await Self.fetchReferencedAssets(
                     of: remotePath, localURL: localURL, root: dir,
                     sftp: sftp, budget: budget, configuration: configuration
                 )
+                let workspace = RemoteEditAssets.workspaceRoot(document: localURL, assets: assets, within: dir)
                 await MainActor.run {
                     self?.editing[remotePath] = .idle
-                    if openInEditor { Self.openWithPreferredEditor(localURL) }
+                    self?.editWorkspaces[remotePath] = workspace
+                    if openInEditor { Self.openWithPreferredEditor(localURL, workspace: workspace) }
                 }
                 await self?.watchAndSync(localURL: localURL, remotePath: remotePath)
             } catch {
@@ -923,7 +942,7 @@ final class SFTPBrowser {
 
     /// issue #34:md/html 打开前顺带把它相对引用的资源拉到镜像位置。尽力而为:只看直接引用,
     /// 最多 32 个、单个 ≤20MB、总量 ≤64MB、整体 15 秒,超出就跳过;目录/不存在/拉失败都跳过。
-    /// 这些资源只下载不回传,编辑回传仍只管主文件。
+    /// 这些资源只下载不回传,编辑回传仍只管主文件。返回成功落地的本地路径。
     private static func fetchReferencedAssets(
         of remotePath: String,
         localURL: URL,
@@ -931,12 +950,12 @@ final class SFTPBrowser {
         sftp: SFTPClient,
         budget: SFTPDownloadEngine.TransferBudget,
         configuration: SFTPTransferConfiguration
-    ) async {
+    ) async -> [URL] {
         guard RemoteEditAssets.isScannable(localURL.lastPathComponent),
-              let handle = try? FileHandle(forReadingFrom: localURL) else { return }
+              let handle = try? FileHandle(forReadingFrom: localURL) else { return [] }
         let data = (try? handle.read(upToCount: RemoteEditAssets.maxScanBytes)) ?? Data()
         try? handle.close()
-        guard !data.isEmpty else { return }
+        guard !data.isEmpty else { return [] }
         let directory = (remotePath as NSString).deletingLastPathComponent
         var targets: [(remote: String, local: URL)] = []
         var seen: Set<String> = [remotePath]
@@ -949,11 +968,12 @@ final class SFTPBrowser {
             targets.append((resolved, local))
             if targets.count >= RemoteEditAssets.maxFiles { break }
         }
-        guard !targets.isEmpty else { return }
+        guard !targets.isEmpty else { return [] }
         let deadline = ContinuousClock.now + .seconds(15)
         var total: UInt64 = 0
+        var downloaded: [URL] = []
         for target in targets {
-            guard !Task.isCancelled, ContinuousClock.now < deadline else { return }
+            guard !Task.isCancelled, ContinuousClock.now < deadline else { break }
             // stat 跟随符号链接;跳过目录与过大的文件
             guard let attributes = try? await sftp.getAttributes(at: target.remote),
                   let size = attributes.size,
@@ -973,10 +993,12 @@ final class SFTPBrowser {
                     budget: budget,
                     configuration: configuration
                 )
+                downloaded.append(target.local)
             } catch {
                 try? FileManager.default.removeItem(at: target.local)
             }
         }
+        return downloaded
     }
 
     /// 轮询本地文件 mtime,变化即回传(对 vim/VSCode 的原子保存-重命名也可靠)
@@ -1013,6 +1035,7 @@ final class SFTPBrowser {
         editTasks[remotePath]?.cancel()
         editTasks[remotePath] = nil
         editLocalURLs[remotePath] = nil
+        editWorkspaces[remotePath] = nil
         editing[remotePath] = nil
     }
 
@@ -1170,6 +1193,7 @@ final class SFTPBrowser {
         for task in editTasks.values { task.cancel() }
         editTasks = [:]
         editLocalURLs = [:]
+        editWorkspaces = [:]
         editing = [:]
         for handler in cancellationHandlers.values { handler() }
         cancellationHandlers = [:]
@@ -1301,6 +1325,25 @@ enum RemoteEditAssets {
         }
         guard !stack.isEmpty else { return nil }
         return "/" + stack.joined(separator: "/")
+    }
+
+    /// 有资源落在文档目录之外(`../shared/x.png`)时,返回文档目录与这些资源目录的共同祖先,
+    /// 供能开文件夹的编辑器当工作区一起打开(VS Code 的预览只认工作区内的本地资源);
+    /// 资源都在文档目录内则返回 nil。祖先不会高过镜像根目录。
+    static func workspaceRoot(document: URL, assets: [URL], within root: URL) -> URL? {
+        let documentDirectory = document.deletingLastPathComponent().pathComponents
+        let outside = assets
+            .map { $0.deletingLastPathComponent().pathComponents }
+            .filter { !$0.starts(with: documentDirectory) }
+        guard !outside.isEmpty else { return nil }
+        var common = documentDirectory
+        for directory in outside {
+            let shared = zip(common, directory).prefix { $0 == $1 }.count
+            common = Array(common.prefix(shared))
+        }
+        let rootComponents = root.pathComponents
+        if common.count < rootComponents.count { common = rootComponents }
+        return URL(fileURLWithPath: NSString.path(withComponents: common), isDirectory: true)
     }
 
     /// 远端绝对路径 → 本地镜像用的分量,每段都过 LocalPathComponentValidator
