@@ -40,6 +40,41 @@ struct ServerInfoInspector: View {
         .background(theme.panelBackground)
         .onReceive(ticker) { now = $0 }
         .task(id: session.id) { await refresh() }
+        .onChange(of: session.pendingEnhancement, initial: true) { _, request in
+            guard let request else { return }
+            session.pendingEnhancement = nil
+            switch request {
+            case .shellHighlight: runShellHighlight()
+            case .commandIntegration: runCommandIntegration()
+            }
+        }
+    }
+
+    /// 「启用命令高亮」:检查器按钮与 ⌘P 命令面板共用同一条路径
+    private func runShellHighlight() {
+        guard highlightState != .working, case .connected = session.state else { return }
+        Task {
+            highlightState = .working
+            let result = await session.enableShellHighlight()
+            switch result {
+            case .installed: highlightState = .done(String(localized: "已启用,重开 shell 或执行 source ~/.zshrc 生效"))
+            case .alreadyEnabled: highlightState = .done(String(localized: "此主机已启用命令高亮"))
+            case .notZsh(let shell): notZshShell = shell; highlightState = .idle
+            case .failed(let msg): highlightState = .done(String(localized: "失败:\(msg)"))
+            }
+        }
+    }
+
+    private func runCommandIntegration() {
+        guard highlightState != .working, case .connected = session.state else { return }
+        Task {
+            highlightState = .working
+            switch await session.enableCommandIntegration() {
+            case .installed: highlightState = .done(String(localized: "已启用命令集成(退出码/命令边界),重连后生效。"))
+            case .alreadyEnabled: highlightState = .done(String(localized: "命令集成已启用。"))
+            case .failed(let msg): highlightState = .done(String(localized: "失败:\(msg)"))
+            }
+        }
     }
 
     private var header: some View {
@@ -311,16 +346,7 @@ struct ServerInfoInspector: View {
                 switch highlightState {
                 case .idle:
                     Button {
-                        Task {
-                            highlightState = .working
-                            let result = await session.enableShellHighlight()
-                            switch result {
-                            case .installed: highlightState = .done(String(localized: "已启用,重开 shell 或执行 source ~/.zshrc 生效"))
-                            case .alreadyEnabled: highlightState = .done(String(localized: "此主机已启用命令高亮"))
-                            case .notZsh(let shell): notZshShell = shell; highlightState = .idle
-                            case .failed(let msg): highlightState = .done(String(localized: "失败:\(msg)"))
-                            }
-                        }
+                        runShellHighlight()
                     } label: {
                         Label("启用命令高亮", systemImage: "paintbrush.pointed")
                             .font(.system(size: 12))
@@ -328,14 +354,7 @@ struct ServerInfoInspector: View {
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     Button {
-                        Task {
-                            highlightState = .working
-                            switch await session.enableCommandIntegration() {
-                            case .installed: highlightState = .done(String(localized: "已启用命令集成(退出码/命令边界),重连后生效。"))
-                            case .alreadyEnabled: highlightState = .done(String(localized: "命令集成已启用。"))
-                            case .failed(let msg): highlightState = .done(String(localized: "失败:\(msg)"))
-                            }
-                        }
+                        runCommandIntegration()
                     } label: {
                         Label("启用命令集成(退出码可见)", systemImage: "checkmark.seal")
                             .font(.system(size: 12))

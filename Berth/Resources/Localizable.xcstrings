@@ -3206,6 +3206,16 @@
         }
       }
     },
+    "启用命令高亮(zsh-syntax-highlighting)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Command Highlighting (zsh-syntax-highlighting)"
+          }
+        }
+      }
+    },
     "命中时响铃": {
       "localizations": {
         "en": {
@@ -8213,6 +8223,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remote %@:%@ → %@:%@"
+          }
+        }
+      }
+    },
+    "远端 ~/.zshrc 一键安装,输入命令时实时染色": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-click install into the remote ~/.zshrc; colors commands as you type"
+          }
+        }
+      }
+    },
+    "远端 rc 一键安装 OSC 133 钩子,退出码与命令边界可见": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "One-click install of OSC 133 hooks into the remote rc files; shows exit codes and command boundaries"
           }
         }
       }
