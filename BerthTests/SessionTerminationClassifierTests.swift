@@ -4,6 +4,20 @@ import NIOSSH
 import Citadel
 @testable import Berth
 
+final class PasswordPromptDetectionTests: XCTestCase {
+    func testOnlyAPromptWaitingAtEndOfLineCounts() {
+        XCTAssertTrue(TerminalSession.looksLikePasswordPrompt("Password: "))
+        XCTAssertTrue(TerminalSession.looksLikePasswordPrompt("Password:"))
+        XCTAssertTrue(TerminalSession.looksLikePasswordPrompt("[sudo] password for dev: "))
+        XCTAssertTrue(TerminalSession.looksLikePasswordPrompt("密码:"))
+        XCTAssertTrue(TerminalSession.looksLikePasswordPrompt("dev's Password:"))
+        XCTAssertFalse(TerminalSession.looksLikePasswordPrompt("Warning: your password will expire in 3 days"))
+        XCTAssertFalse(TerminalSession.looksLikePasswordPrompt("su - 'dev'"))
+        XCTAssertFalse(TerminalSession.looksLikePasswordPrompt("Password: ******"))
+        XCTAssertFalse(TerminalSession.looksLikePasswordPrompt(""))
+    }
+}
+
 final class SessionTerminationClassifierTests: XCTestCase {
 
     private struct ArbitraryError: Error, CustomStringConvertible {
