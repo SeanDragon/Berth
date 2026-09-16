@@ -53,6 +53,24 @@ final class SFTPBrowserTests: XCTestCase {
         XCTAssertNil(RemoteEditAssets.components(of: "/"))
     }
 
+    func testRemoteEditAssetsWorkspaceRootOnlyWhenAssetsLeaveDocumentDirectory() {
+        let root = URL(fileURLWithPath: "/tmp/berth-edit-x", isDirectory: true)
+        let document = root.appendingPathComponent("srv/docs/readme.md")
+        let inside = root.appendingPathComponent("srv/docs/diagrams/a.svg")
+        let sibling = root.appendingPathComponent("srv/shared/b.png")
+        let far = root.appendingPathComponent("etc/c.png")
+        XCTAssertNil(RemoteEditAssets.workspaceRoot(document: document, assets: [], within: root))
+        XCTAssertNil(RemoteEditAssets.workspaceRoot(document: document, assets: [inside], within: root))
+        XCTAssertEqual(
+            RemoteEditAssets.workspaceRoot(document: document, assets: [inside, sibling], within: root)?.path,
+            "/tmp/berth-edit-x/srv"
+        )
+        XCTAssertEqual(
+            RemoteEditAssets.workspaceRoot(document: document, assets: [far], within: root)?.path,
+            "/tmp/berth-edit-x"
+        )
+    }
+
     func testDirectoryDeletePlanOrdersDeepestFirst() async throws {
         typealias Item = SFTPBrowser.DownloadTreeEntry
         let tree: [String: [Item]] = [
