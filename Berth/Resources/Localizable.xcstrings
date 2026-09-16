@@ -1008,12 +1008,32 @@
         }
       }
     },
+    "SFTP 无响应,点刷新重新打开。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SFTP is not responding. Click Refresh to reopen it."
+          }
+        }
+      }
+    },
     "SFTP 连接不可用": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "SFTP connection unavailable"
+          }
+        }
+      }
+    },
+    "SFTP 通道已断开,点刷新重新打开。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The SFTP channel closed. Click Refresh to reopen it."
           }
         }
       }
@@ -1635,6 +1655,16 @@
         }
       }
     },
+    "下载到此处": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download Here"
+          }
+        }
+      }
+    },
     "下载并分享…": {
       "localizations": {
         "en": {
@@ -1651,6 +1681,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "The temporary download item is missing: %@"
+          }
+        }
+      }
+    },
+    "下载选中的 %lld 项到文件夹…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Download %lld Selected Items to Folder…"
           }
         }
       }
@@ -2812,6 +2852,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Delete this chat"
+          }
+        }
+      }
+    },
+    "删除选中的 %lld 项?": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete %lld selected items?"
+          }
+        }
+      }
+    },
+    "删除选中的 %lld 项…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete %lld Selected Items…"
           }
         }
       }
@@ -4882,6 +4942,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Files"
+          }
+        }
+      }
+    },
+    "文件夹会连同其中所有内容一起删除,不可撤销。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folders are deleted together with everything inside. This cannot be undone."
           }
         }
       }
@@ -8337,6 +8407,16 @@
         }
       }
     },
+    "连接已断开,重连后自动恢复。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection lost. SFTP resumes once the session reconnects."
+          }
+        }
+      }
+    },
     "连接已被服务器关闭": {
       "localizations": {
         "en": {
@@ -8463,6 +8543,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Choose where to save the session log"
+          }
+        }
+      }
+    },
+    "选择保存这 %lld 项的文件夹(同名文件将被替换)": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a folder for these %lld items (files with the same name will be replaced)"
           }
         }
       }

@@ -372,8 +372,94 @@ enum M2AcceptanceTest {
         // 目录递归上传往返(issue #17):嵌套目录 + 空文件 + 符号链接(应跳过)
         let dirRoundtrip = await verifyDirectoryRoundtrip(browser: browser, session: session, log: log)
 
-        log("SFTP_OK home=\(homeListed) uploaded=\(uploaded) roundtrip=\(roundtrip) deleted=\(deleted) followsCwd=\(followsCwd) dirRoundtrip=\(dirRoundtrip)")
+        // 通道被杀/挂住/断线后自愈(issue #33)
+        let recovery = await verifyChannelRecovery(browser: browser, session: session, log: log)
+
+        log("SFTP_OK home=\(homeListed) uploaded=\(uploaded) roundtrip=\(roundtrip) deleted=\(deleted) followsCwd=\(followsCwd) dirRoundtrip=\(dirRoundtrip) recovery=\(recovery)")
         browser.close()
+    }
+
+    /// issue #33 验收:面板持有的子通道死掉/挂住后必须自愈,不能停在死通道上等用户重启 app。
+    /// (1) 服务端 sftp 进程被杀 → 通道关闭 → 刷新自动重开并回到原目录;
+    /// (2) 服务端 sftp 进程 SIGSTOP(模拟远端目录挂在僵死的 NFS 上)→ 看门狗 20s 置失败并丢弃
+    ///     通道 → 刷新开新通道恢复;
+    /// (3) 会话断线通知 → 立即失败态并丢弃通道 → 刷新即重开。
+    /// 服务端进程名:OpenSSH 是 sftp-server,或 internal-sftp(进程标题 sshd: user@internal-sftp)。
+    private static func verifyChannelRecovery(
+        browser: SFTPBrowser,
+        session: TerminalSession,
+        log: (String) -> Void
+    ) async -> Bool {
+        let dirName = "berth_recov"
+        func killServerSFTP(_ signal: String) async {
+            session.sendText("pkill -\(signal) -f sftp-server; pkill -\(signal) -f internal-sftp\n")
+            try? await Task.sleep(for: .milliseconds(800))
+        }
+        func isFailed() -> Bool {
+            if case .failed = browser.state { return true }
+            return false
+        }
+        func cleanup() async {
+            await killServerSFTP("KILL")
+            session.sendText("rmdir ~/\(dirName)\n")
+            try? await Task.sleep(for: .milliseconds(300))
+        }
+
+        session.sendText("mkdir -p ~/\(dirName)\n")
+        try? await Task.sleep(for: .milliseconds(500))
+        await browser.refresh()
+        guard let sub = browser.entries.first(where: { $0.name == dirName && $0.isDirectory }) else {
+            log("SFTP_FAIL recovery: 未见 \(dirName) state=\(browser.state)")
+            return false
+        }
+        await browser.enter(sub)
+        let subPath = browser.path
+        guard browser.state == .ready, subPath.hasSuffix("/" + dirName) else {
+            log("SFTP_FAIL recovery: 进目录失败 state=\(browser.state) path=\(subPath)")
+            await cleanup()
+            return false
+        }
+
+        // (1) 被杀
+        await killServerSFTP("KILL")
+        await browser.refresh()
+        let killedRecovered = browser.state == .ready && browser.path == subPath
+        guard killedRecovered else {
+            log("SFTP_FAIL recovery(kill): state=\(browser.state) path=\(browser.path)")
+            await cleanup()
+            return false
+        }
+
+        // (2) 挂住:READDIR 永不回,看门狗到点置失败;收掉被停住的进程后刷新应恢复
+        await killServerSFTP("STOP")
+        let started = Date()
+        await browser.refresh()
+        let waited = Date().timeIntervalSince(started)
+        let watchdogFired = isFailed()
+        await killServerSFTP("KILL")
+        await browser.refresh()
+        let hungRecovered = watchdogFired && waited >= 19 && waited < 40
+            && browser.state == .ready && browser.path == subPath
+        guard hungRecovered else {
+            log("SFTP_FAIL recovery(hang): watchdog=\(watchdogFired) waited=\(Int(waited))s state=\(browser.state) path=\(browser.path)")
+            await cleanup()
+            return false
+        }
+
+        // (3) 断线通知
+        browser.connectionLost()
+        let lostState = isFailed()
+        await browser.refresh()
+        let lostRecovered = lostState && browser.state == .ready && browser.path == subPath
+        guard lostRecovered else {
+            log("SFTP_FAIL recovery(lost): failedFirst=\(lostState) state=\(browser.state) path=\(browser.path)")
+            await cleanup()
+            return false
+        }
+
+        await browser.goUp()
+        await cleanup()
+        return true
     }
 
     /// issue #17 验收:建本地目录树(含符号链接)→ 递归上传 → 递归下载回来逐文件比对

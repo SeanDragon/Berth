@@ -23,6 +23,10 @@ struct SFTPPanelView: View {
     @State private var previewText: String?
     @State private var isLocatingTerminalDir = false
     @State private var terminalDirProbeFailed = false
+    /// 多选(点选/⌘ 加减/⇧ 连选);列表刷新后 Entry id 重生成,选择自然清空
+    @State private var selectedIDs: Set<UUID> = []
+    @State private var selectionAnchorID: UUID?
+    @State private var pendingBatchDelete: [SFTPBrowser.Entry]?
 
     private var theme: TerminalTheme { ThemeStore.shared.current }
 
@@ -64,11 +68,15 @@ struct SFTPPanelView: View {
             await browser.start()
         }
         .onChange(of: isSessionConnected) { _, connected in
-            // 面板先于连接打开(或断线重连后):连上即自动重试打开 SFTP,不再永久停在失败态
+            // 断线:子通道随连接一起没了,立即丢掉旧客户端,不再对着死通道刷新;
+            // 连上(面板先于连接打开,或断线重连后):自动重开 SFTP,不再永久停在失败态
             if connected {
                 Task { await browser?.refresh() }
+            } else {
+                browser?.connectionLost()
             }
         }
+        .onChange(of: browser?.path) { _, _ in selectedIDs = [] }
         .onDisappear { browser?.close() }
         .sheet(item: $chmodEntry) { entry in
             ChmodSheet(entry: entry, mode: $chmodMode) {
@@ -211,6 +219,8 @@ struct SFTPPanelView: View {
                 VStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle").foregroundStyle(.orange)
                     Text(message).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                    Button("重试") { Task { await browser?.refresh() } }
+                        .controlSize(.small)
                 }
                 .padding()
             }
@@ -245,6 +255,18 @@ struct SFTPPanelView: View {
             Text(pendingDelete?.isDirectory == true
                 ? String(localized: "文件夹及其中所有内容将被删除,不可撤销。")
                 : String(localized: "此操作不可撤销。"))
+        }
+        .confirmationDialog(
+            String(localized: "删除选中的 \(pendingBatchDelete?.count ?? 0) 项?"),
+            isPresented: Binding(get: { pendingBatchDelete != nil }, set: { if !$0 { pendingBatchDelete = nil } })
+        ) {
+            Button("删除", role: .destructive) {
+                if let entries = pendingBatchDelete { Task { await browser?.delete(entries) } }
+                pendingBatchDelete = nil
+            }
+            Button("取消", role: .cancel) { pendingBatchDelete = nil }
+        } message: {
+            Text("文件夹会连同其中所有内容一起删除,不可撤销。")
         }
         .alert("重命名", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("新名称", text: $renameText)
@@ -286,7 +308,7 @@ struct SFTPPanelView: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(hoveredEntryID == entry.id ? Color.primary.opacity(0.05) : .clear)
+                .fill(rowFill(entry))
                 .padding(.horizontal, 6)
                 .animation(.easeOut(duration: 0.12), value: hoveredEntryID)
         )
@@ -301,7 +323,15 @@ struct SFTPPanelView: View {
                 browser?.editRemotely(entry) // 双击文件 = 本地编辑器打开并自动回传
             }
         }
+        // 单击选中立刻生效(simultaneous 不等双击判定),双击照常打开
+        .simultaneousGesture(TapGesture().onEnded { select(entry) })
         .contextMenu {
+            let batch = selectedEntries
+            if batch.count > 1, selectedIDs.contains(entry.id) {
+                Button(String(localized: "下载选中的 \(batch.count) 项到文件夹…")) { downloadPick(batch) }
+                Button(String(localized: "删除选中的 \(batch.count) 项…"), role: .destructive) { pendingBatchDelete = batch }
+                Divider()
+            }
             if entry.isDirectory {
                 Button("打开") { Task { await browser?.enter(entry) } }
             } else {
@@ -337,6 +367,32 @@ struct SFTPPanelView: View {
                     .foregroundStyle(.orange)
                     .help("回传失败")
             }
+        }
+    }
+
+    private var selectedEntries: [SFTPBrowser.Entry] {
+        (browser?.entries ?? []).filter { selectedIDs.contains($0.id) }
+    }
+
+    private func rowFill(_ entry: SFTPBrowser.Entry) -> Color {
+        if selectedIDs.contains(entry.id) { return theme.accentColor.opacity(0.18) }
+        return hoveredEntryID == entry.id ? Color.primary.opacity(0.05) : .clear
+    }
+
+    /// Finder 式选择:单击只选这一项,⌘ 加减,⇧ 从上次点选处连选
+    private func select(_ entry: SFTPBrowser.Entry) {
+        let flags = NSApp.currentEvent?.modifierFlags ?? []
+        let entries = browser?.entries ?? []
+        if flags.contains(.command) {
+            if selectedIDs.contains(entry.id) { selectedIDs.remove(entry.id) } else { selectedIDs.insert(entry.id) }
+            selectionAnchorID = entry.id
+        } else if flags.contains(.shift),
+                  let anchor = entries.firstIndex(where: { $0.id == selectionAnchorID }),
+                  let target = entries.firstIndex(where: { $0.id == entry.id }) {
+            selectedIDs.formUnion(entries[min(anchor, target)...max(anchor, target)].map(\.id))
+        } else {
+            selectedIDs = [entry.id]
+            selectionAnchorID = entry.id
         }
     }
 
@@ -420,6 +476,22 @@ struct SFTPPanelView: View {
         panel.nameFieldStringValue = entry.name
         if panel.runModal() == .OK, let url = panel.url {
             Task { await browser?.download(entry, to: url) }
+        }
+    }
+
+    /// 多选下载:挑一个文件夹,逐项下载进去(目录递归);同名文件按单项下载的规则原子替换
+    private func downloadPick(_ entries: [SFTPBrowser.Entry]) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = String(localized: "下载到此处")
+        panel.message = String(localized: "选择保存这 \(entries.count) 项的文件夹(同名文件将被替换)")
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        Task {
+            for entry in entries {
+                await browser?.download(entry, to: directory.appendingPathComponent(entry.name))
+            }
         }
     }
 

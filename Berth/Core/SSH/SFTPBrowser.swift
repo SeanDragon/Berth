@@ -163,6 +163,12 @@ final class SFTPBrowser {
     private let initialPath: String?
     /// 面板已关闭:打开中(await opener)被关时,迟到的 client 要立即关掉,不能泄漏子通道
     private var isClosed = false
+    /// 通道失效后重开时回到的目录(上次成功列出的目录);首次打开用 initialPath
+    private var resumePath: String?
+    /// 通道死掉后是否已经自动重开过一次(成功列目录即复位),服务端每次都秒断时不至于无限循环
+    private var reopenedAfterFailure = false
+    /// 列目录看门狗:远端目录挂在僵死的 NFS 上时 READDIR 永远不回,不能让面板一直转圈
+    static let listingTimeout: Duration = .seconds(20)
 
     init(
         initialPath: String? = nil,
@@ -196,9 +202,12 @@ final class SFTPBrowser {
     }
     #endif
 
-    /// 打开 SFTP 并列出 home 目录。子通道打开可能被服务器无响应地挂住
-    /// (sshd 未启用 SFTP 子系统 / MaxSessions 限制),15s 看门狗置失败态可重试。
-    func start() async {
+    /// 打开 SFTP 并列出首个目录:该 pane 终端的当前目录,列不出来回落 home
+    func start() async { await open(listing: initialPath) }
+
+    /// 打开子通道后列出 target(nil = home;列不出来回落 home)。子通道打开可能被服务器
+    /// 无响应地挂住(sshd 未启用 SFTP 子系统 / MaxSessions 限制),15s 看门狗置失败态可重试。
+    private func open(listing target: String?) async {
         guard sftp == nil, state != .loading else { return }
         Task { _ = try? await SFTPDragStagingStore.shared.sweepStale() }
         state = .loading
@@ -221,10 +230,10 @@ final class SFTPBrowser {
             sftp = client
             let home = (try? await client.getRealPath(atPath: ".")) ?? "/"
             homePath = home
-            // 优先落在该 pane 终端的当前目录;那个目录可能已被删/无权限,失败就回落 home
-            if let initialPath, initialPath != home {
-                await list(path: initialPath)
-                if case .failed = state { await list(path: home) }
+            if let target, target != home {
+                await list(path: target)
+                // 目标目录可能已被删/无权限,回落 home;通道在等待期间又换了就不动
+                if case .failed = state, sftp === client { await list(path: home) }
             } else {
                 await list(path: home)
             }
@@ -234,10 +243,10 @@ final class SFTPBrowser {
         }
     }
 
-    /// 已连上则重新列目录;打开失败/未打开(如面板先于连接打开)则重试整个打开流程
+    /// 已连上则重新列目录;通道未开/已丢弃(面板先于连接打开、断线、超时、被杀)则重开并回到原目录
     func refresh() async {
         if sftp == nil {
-            await start()
+            await open(listing: resumePath ?? initialPath)
         } else {
             await list(path: path)
         }
@@ -270,10 +279,24 @@ final class SFTPBrowser {
     }
 
     private func list(path newPath: String) async {
-        guard let sftp else { return }
+        // 通道已丢弃(断线/超时/被杀):先重开,直接落到目标目录,挂住的那个目录不必再等一次看门狗
+        guard let sftp else {
+            await open(listing: newPath)
+            return
+        }
         state = .loading
-        do {
-            let names = try await sftp.listDirectory(atPath: newPath)
+        let listing = Task { try await sftp.listDirectory(atPath: newPath) }
+        guard let outcome = await Self.result(of: listing, within: Self.listingTimeout) else {
+            // 服务器不回包:关掉通道让挂起的请求失败,下次刷新自动开一条新通道
+            guard self.sftp === sftp else { return }
+            dropClient()
+            state = .failed(String(localized: "SFTP 无响应,点刷新重新打开。"))
+            return
+        }
+        // 等待期间通道可能已被换掉(断线重连/超时重开),迟到的结果不能覆盖新通道的状态
+        guard self.sftp === sftp else { return }
+        switch outcome {
+        case .success(let names):
             let components = names.flatMap(\.components)
             let mapped: [Entry] = components.compactMap { component in
                 let name = component.filename
@@ -294,9 +317,77 @@ final class SFTPBrowser {
                 return $0.name.localizedStandardCompare($1.name) == .orderedAscending
             }
             path = newPath
+            resumePath = newPath
+            reopenedAfterFailure = false
             state = .ready
-        } catch {
+        case .failure(let error):
+            await handleFailure(error, retrying: newPath)
+        }
+    }
+
+    // MARK: - 通道失效恢复
+
+    /// 各操作的统一失败出口:通道死了走重开流程,其余只提示。
+    /// 通道已被别处丢弃(断线/看门狗)时保留那边的提示,不让迟到的 connectionClosed 盖掉。
+    private func handleFailure(_ error: Error, retrying target: String? = nil) async {
+        guard let sftp else {
+            if !Self.isDeadChannelError(error) { state = .failed(friendly(error)) }
+            return
+        }
+        if !sftp.isActive || Self.isDeadChannelError(error) {
+            await reopenAfterDeadChannel(listing: target)
+        } else {
             state = .failed(friendly(error))
+        }
+    }
+
+    /// 通道已死(会话重连换了连接、服务端关掉了 sftp 子系统、看门狗关的):丢掉旧客户端,
+    /// 自动重开一次落到 target(默认原目录);再失败就停在失败态,等用户操作或会话重连时由面板触发。
+    private func reopenAfterDeadChannel(listing target: String? = nil) async {
+        dropClient()
+        state = .failed(String(localized: "SFTP 通道已断开,点刷新重新打开。"))
+        guard !reopenedAfterFailure else { return }
+        reopenedAfterFailure = true
+        await open(listing: target ?? resumePath ?? initialPath)
+    }
+
+    /// 终端会话断线:子通道随连接一起没了,立即丢掉客户端;重连后由面板调 refresh() 重开
+    func connectionLost() {
+        guard sftp != nil else { return }
+        dropClient()
+        state = .failed(String(localized: "连接已断开,重连后自动恢复。"))
+    }
+
+    private func dropClient() {
+        guard let client = sftp else { return }
+        sftp = nil
+        Task.detached { try? await client.close() }
+    }
+
+    private static func isDeadChannelError(_ error: Error) -> Bool {
+        if case SFTPError.connectionClosed = error { return true }
+        if let channelError = error as? ChannelError {
+            switch channelError {
+            case .ioOnClosedChannel, .alreadyClosed, .eof: return true
+            default: return false
+            }
+        }
+        return false
+    }
+
+    /// 等任务出结果或超时;超时返回 nil。任务不取消:Citadel 的请求等待不响应取消,
+    /// 调用方靠关通道让它失败,任务随后自行结束。
+    private static func result<T: Sendable>(of task: Task<T, Error>, within timeout: Duration) async -> Result<T, Error>? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Result<T, Error>?, Never>) in
+            let gate = ResumeGate()
+            Task {
+                let outcome = await task.result
+                if gate.claim() { continuation.resume(returning: outcome) }
+            }
+            Task {
+                try? await Task.sleep(for: timeout)
+                if gate.claim() { continuation.resume(returning: nil) }
+            }
         }
     }
 
@@ -415,7 +506,7 @@ final class SFTPBrowser {
         } catch where SFTPTransferCancellation.isCancellation(error) {
             // 用户主动取消, 不改变 state 为 .failed
         } catch {
-            state = .failed(friendly(error))
+            await handleFailure(error)
         }
     }
 
@@ -734,7 +825,7 @@ final class SFTPBrowser {
             }
             await refresh()
         } catch {
-            state = .failed(friendly(error))
+            await handleFailure(error)
         }
     }
 
@@ -810,7 +901,7 @@ final class SFTPBrowser {
                     self?.editing[remotePath] = .idle
                     if openInEditor { Self.openWithPreferredEditor(localURL) }
                 }
-                await self?.watchAndSync(localURL: localURL, remotePath: remotePath, sftp: sftp)
+                await self?.watchAndSync(localURL: localURL, remotePath: remotePath)
             } catch {
                 await MainActor.run { self?.editing[remotePath] = .failed }
             }
@@ -821,7 +912,7 @@ final class SFTPBrowser {
     }
 
     /// 轮询本地文件 mtime,变化即回传(对 vim/VSCode 的原子保存-重命名也可靠)
-    private func watchAndSync(localURL: URL, remotePath: String, sftp: SFTPClient) async {
+    private func watchAndSync(localURL: URL, remotePath: String) async {
         func mtime() -> Date? {
             (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.modificationDate]) as? Date
         }
@@ -834,6 +925,8 @@ final class SFTPBrowser {
             lastModified = current
             editing[remotePath] = .syncing
             do {
+                // 用当前通道回传:断线重连/超时重开换过通道后,编辑会话不必重来
+                guard let sftp else { throw TransferError.sftpUnavailable }
                 let data = try Data(contentsOf: localURL)
                 let file = try await sftp.openFile(filePath: remotePath, flags: [.write, .create, .truncate])
                 var buffer = ByteBufferAllocator().buffer(capacity: data.count)
@@ -866,7 +959,7 @@ final class SFTPBrowser {
             try await sftp.setAttributes(at: join(path, entry.name), to: attrs)
             await refresh()
         } catch {
-            state = .failed(friendly(error))
+            await handleFailure(error)
         }
     }
 
@@ -932,53 +1025,65 @@ final class SFTPBrowser {
             try await sftp.createDirectory(atPath: join(path, name))
             await refresh()
         } catch {
-            state = .failed(friendly(error))
+            await handleFailure(error)
         }
     }
 
     /// 删除文件/符号链接直接 remove;目录递归删除(rmdir 只认空目录,非空必须先清内容)
-    func delete(_ entry: Entry) async {
-        guard let sftp else { return }
+    func delete(_ entry: Entry) async { await delete([entry]) }
+
+    /// 批量删除:逐个删,全部结束后只刷新一次;中途出错停下并提示。
+    /// 目录在开始时冻结,删除期间切目录不会把后面的项解析到新位置。
+    func delete(_ entries: [Entry]) async {
+        guard let sftp, !entries.isEmpty else { return }
+        let directory = path
         do {
-            let full = join(path, entry.name)
-            if entry.isDirectory {
-                let transferID = beginTransfer(String(localized: "删除 \(entry.name)…"))
-                defer { endTransfer(transferID) }
-                let plan = try await Self.makeDirectoryDeletePlan(remoteRoot: full) { path in
-                    let names = try await sftp.listDirectory(atPath: path)
-                    return names.flatMap(\.components).compactMap { component in
-                        guard component.filename != ".", component.filename != ".." else { return nil }
-                        let kind: DownloadTreeEntry.Kind = switch fileType(component) {
-                        case .directory: .directory
-                        case .symlink: .symlink
-                        case .file: .file
-                        }
-                        return DownloadTreeEntry(
-                            name: component.filename, kind: kind,
-                            size: component.attributes.size ?? 0
-                        )
-                    }
-                }
-                let total = plan.removals.count + plan.directories.count
-                var done = 0
-                for removal in plan.removals {
-                    try Task.checkCancellation()
-                    try await sftp.remove(at: removal)
-                    done += 1
-                    setTransfer(transferID, progress: Double(done) / Double(total))
-                }
-                for directory in plan.directories {
-                    try Task.checkCancellation()
-                    try await sftp.rmdir(at: directory)
-                    done += 1
-                    setTransfer(transferID, progress: Double(done) / Double(total))
-                }
-            } else {
-                try await sftp.remove(at: full)
+            for entry in entries {
+                try Task.checkCancellation()
+                try await remove(entry, in: directory, using: sftp)
             }
             await refresh()
         } catch {
-            state = .failed(friendly(error))
+            await handleFailure(error)
+        }
+    }
+
+    private func remove(_ entry: Entry, in directory: String, using sftp: SFTPClient) async throws {
+        let full = join(directory, entry.name)
+        guard entry.isDirectory else {
+            try await sftp.remove(at: full)
+            return
+        }
+        let transferID = beginTransfer(String(localized: "删除 \(entry.name)…"))
+        defer { endTransfer(transferID) }
+        let plan = try await Self.makeDirectoryDeletePlan(remoteRoot: full) { path in
+            let names = try await sftp.listDirectory(atPath: path)
+            return names.flatMap(\.components).compactMap { component in
+                guard component.filename != ".", component.filename != ".." else { return nil }
+                let kind: DownloadTreeEntry.Kind = switch fileType(component) {
+                case .directory: .directory
+                case .symlink: .symlink
+                case .file: .file
+                }
+                return DownloadTreeEntry(
+                    name: component.filename, kind: kind,
+                    size: component.attributes.size ?? 0
+                )
+            }
+        }
+        let total = plan.removals.count + plan.directories.count
+        var done = 0
+        for removal in plan.removals {
+            try Task.checkCancellation()
+            try await sftp.remove(at: removal)
+            done += 1
+            setTransfer(transferID, progress: Double(done) / Double(total))
+        }
+        for directory in plan.directories {
+            try Task.checkCancellation()
+            try await sftp.rmdir(at: directory)
+            done += 1
+            setTransfer(transferID, progress: Double(done) / Double(total))
         }
     }
 
@@ -988,7 +1093,7 @@ final class SFTPBrowser {
             try await sftp.rename(at: join(path, entry.name), to: join(path, newName))
             await refresh()
         } catch {
-            state = .failed(friendly(error))
+            await handleFailure(error)
         }
     }
 
@@ -1042,6 +1147,7 @@ final class SFTPBrowser {
     }
 
     private func friendly(_ error: Error) -> String {
+        if Self.isDeadChannelError(error) { return String(localized: "SFTP 通道已断开,点刷新重新打开。") }
         if let localizedError = error as? LocalizedError,
            let description = localizedError.errorDescription {
             return description
@@ -1052,6 +1158,20 @@ final class SFTPBrowser {
             return String(localized: "文件或目录不存在")
         }
         return String(localized: "SFTP 操作失败:\(raw)")
+    }
+}
+
+/// 只允许第一次认领成功:超时与结果两条路径谁先到谁 resume,另一条静默放弃
+private final class ResumeGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var claimed = false
+
+    func claim() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if claimed { return false }
+        claimed = true
+        return true
     }
 }
 

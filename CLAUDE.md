@@ -87,7 +87,9 @@ BERTH_M1_AUTOTEST=1 BERTH_TRANSIENT_STORE=1 \
 - [x] M3 — 高级连接(已并入 main):跳板机链式、端口转发(本地/动态 SOCKS5/远程 全部真机验证)、HTTP/SOCKS5 代理、ssh-agent(ed25519+RSA)、服务器信息 inspector(⌘I,含资源图形化)、JSON 备份。均真机验证,35 单测绿
 - [~] M4 — 二期(部分已并入 main):
   - [x] ~~iTerm2 主题导入~~ 按用户决定移除,改为 20 套内置主题(含 4 套精选:松烟墨/夜泊琥珀/祖母绿/玉版宣);侧栏底部 🎨 配色面板 + ⚙ 设置入口
-  - [x] SFTP 侧边文件面板 + 拖拽上传下载(复用会话连接;`BERTH_SFTP_AUTOTEST` 真机跑通往返)
+  - [x] SFTP 侧边文件面板 + 拖拽上传下载(复用会话连接;`BERTH_SFTP_AUTOTEST` 真机跑通往返)。
+    issue #33:子通道被杀/挂住(20s 看门狗)/断线后自愈重开回原目录,失败态有「重试」;
+    Finder 式多选(⌘/⇧)批量下载到文件夹/批量删除;验收含三种恢复场景
   - [x] 本地 Shell(issue #3):SwiftTerm LocalProcess 本地 PTY 会话,复用标签/分屏/主题/广播/AI 面板(本地 exec 走 Process)。入口:⇧⌘T、⌘K、⌘P、标签条「+」、空状态按钮;设置可自定义 shell 路径(留空=登录 shell);⌥⌘L 在任意会话旁混合分屏本地 Shell;拖文件到本地 pane 插入转义路径(SSH pane 仍走 SFTP 上传)。SSH 专属面板(SFTP/Docker/⌘I)对本地会话隐藏。`BERTH_LOCAL_AUTOTEST=1` 自动化验收;`BERTH_WINDOW_SNAPSHOT` 免录屏权限窗口自截图。标题栏整行给标签(会话信息/生产警戒移到底部状态栏,点按开 ⌘I),标签双击/右键重命名
   - [x] CloudKit 同步(已并入 main):单库镜像 iCloud 私有库(容器 iCloud.com.berthssh.app,Team 99LYH6FNPS)。模型去 unique/关系 optional 化;ssh_config 镜像主机改内存态(不入库不同步,id 按 alias 决定性派生);机密走 iCloud 钥匙串共享访问组 `<team>.com.berthssh.shared` + 数据保护钥匙串同步(密码/密钥库私钥端到端加密,任一设备录入后两端直连),`kSecUseDataProtectionKeychain`;`BERTH_DISABLE_SYNC=1` 调试关闭。设置页同步状态(CloudSyncMonitor:同步中/上次同步/立即同步)。Mac+iPhone 真机双端验收通过:主机/密码同步直连、指纹确认、缺凭据补录引导、私钥文件主机转密钥库后 iOS 可连。⚠️ bundle id 为 com.berthssh.app/.ios(早期开发构建的机密已一次性迁移完毕,旧 service 迁移代码已移除)
   - [x] keyboard-interactive 认证(issue #12 堡垒机 MFA):vendor nio-ssh 补 RFC 4256
