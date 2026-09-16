@@ -26,6 +26,33 @@ private final class SFTPLockedValue<Value>: @unchecked Sendable {
 final class SFTPBrowserTests: XCTestCase {
 
     /// 递归删除:文件与符号链接先删(链接删自身),目录按最深优先,root 最后
+    func testRemoteEditAssetsExtractsRelativeReferencesOnly() {
+        let markdown = """
+        ![A](diagrams/a.svg) [B](../shared/b.png "title") <img src="img/c.png"> ![X](https://e.com/x.png)
+        ![Y](/abs/y.png) [Z](#anchor) [Q](docs/q.md?v=1#top) ![enc](my%20pic.png) [dup](diagrams/a.svg)
+        <a href='mailto:a@b.c'>m</a> [dir](sub/) ![proto](//cdn.example.com/p.png)
+        [ref]: assets/r.gif
+        """
+        XCTAssertEqual(
+            RemoteEditAssets.relativeReferences(in: markdown),
+            ["diagrams/a.svg", "../shared/b.png", "img/c.png", "docs/q.md", "my pic.png", "assets/r.gif"]
+        )
+        XCTAssertTrue(RemoteEditAssets.isScannable("README.md"))
+        XCTAssertTrue(RemoteEditAssets.isScannable("index.HTML"))
+        XCTAssertFalse(RemoteEditAssets.isScannable("app.log"))
+    }
+
+    func testRemoteEditAssetsResolvesAgainstDirectoryAndRejectsEscapes() {
+        XCTAssertEqual(RemoteEditAssets.resolve("diagrams/a.svg", relativeTo: "/srv/docs"), "/srv/docs/diagrams/a.svg")
+        XCTAssertEqual(RemoteEditAssets.resolve("../shared/b.png", relativeTo: "/srv/docs"), "/srv/shared/b.png")
+        XCTAssertEqual(RemoteEditAssets.resolve("./x/./y.png", relativeTo: "/"), "/x/y.png")
+        XCTAssertNil(RemoteEditAssets.resolve("../../../etc/passwd", relativeTo: "/srv"))
+        XCTAssertNil(RemoteEditAssets.resolve("..", relativeTo: "/srv"))
+        XCTAssertEqual(RemoteEditAssets.components(of: "/srv/docs/a.svg"), ["srv", "docs", "a.svg"])
+        XCTAssertNil(RemoteEditAssets.components(of: "/srv/bad\u{0}name"))
+        XCTAssertNil(RemoteEditAssets.components(of: "/"))
+    }
+
     func testDirectoryDeletePlanOrdersDeepestFirst() async throws {
         typealias Item = SFTPBrowser.DownloadTreeEntry
         let tree: [String: [Item]] = [

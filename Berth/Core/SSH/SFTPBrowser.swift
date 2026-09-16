@@ -873,9 +873,12 @@ final class SFTPBrowser {
             return editLocalURLs[remotePath]
         }
 
+        // 本地副本按远端绝对路径镜像存放(issue #34):md/html 里 `diagrams/x.svg`、`../a.png`
+        // 这类相对引用在编辑器预览里才对得上,顺带把它们拉下来放到对应位置
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("berth-edit-\(UUID().uuidString)", isDirectory: true)
-        guard let localURL = try? LocalPathComponentValidator.safeURL(in: dir, component: entry.name) else {
+        guard let components = RemoteEditAssets.components(of: remotePath),
+              let localURL = try? LocalPathComponentValidator.safeURL(in: dir, components: components) else {
             return nil
         }
         editLocalURLs[remotePath] = localURL
@@ -885,7 +888,9 @@ final class SFTPBrowser {
         let configuration = self.configuration
         let task = Task { [weak self] in
             do {
-                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                try FileManager.default.createDirectory(
+                    at: localURL.deletingLastPathComponent(), withIntermediateDirectories: true
+                )
                 // 下载走下载引擎:按实际读到的字节推进,服务器谎报大小/提前 EOF 都能正确收尾。
                 // 不用 Citadel 的 readAll():它按 FSTAT 大小循环,超量 DATA 会整数下溢崩溃,
                 // 提前 EOF 会无限发 READ,而且整个文件都在内存里
@@ -896,6 +901,11 @@ final class SFTPBrowser {
                     sftp: sftp,
                     budget: budget,
                     configuration: configuration
+                )
+                // 引用的资源先于编辑器打开就位,预览首次渲染就有图;拉不到不影响主文件编辑
+                await Self.fetchReferencedAssets(
+                    of: remotePath, localURL: localURL, root: dir,
+                    sftp: sftp, budget: budget, configuration: configuration
                 )
                 await MainActor.run {
                     self?.editing[remotePath] = .idle
@@ -909,6 +919,64 @@ final class SFTPBrowser {
         }
         editTasks[remotePath] = task
         return localURL
+    }
+
+    /// issue #34:md/html 打开前顺带把它相对引用的资源拉到镜像位置。尽力而为:只看直接引用,
+    /// 最多 32 个、单个 ≤20MB、总量 ≤64MB、整体 15 秒,超出就跳过;目录/不存在/拉失败都跳过。
+    /// 这些资源只下载不回传,编辑回传仍只管主文件。
+    private static func fetchReferencedAssets(
+        of remotePath: String,
+        localURL: URL,
+        root: URL,
+        sftp: SFTPClient,
+        budget: SFTPDownloadEngine.TransferBudget,
+        configuration: SFTPTransferConfiguration
+    ) async {
+        guard RemoteEditAssets.isScannable(localURL.lastPathComponent),
+              let handle = try? FileHandle(forReadingFrom: localURL) else { return }
+        let data = (try? handle.read(upToCount: RemoteEditAssets.maxScanBytes)) ?? Data()
+        try? handle.close()
+        guard !data.isEmpty else { return }
+        let directory = (remotePath as NSString).deletingLastPathComponent
+        var targets: [(remote: String, local: URL)] = []
+        var seen: Set<String> = [remotePath]
+        for reference in RemoteEditAssets.relativeReferences(in: String(decoding: data, as: UTF8.self)) {
+            guard let resolved = RemoteEditAssets.resolve(reference, relativeTo: directory),
+                  seen.insert(resolved).inserted,
+                  let components = RemoteEditAssets.components(of: resolved),
+                  let local = try? LocalPathComponentValidator.safeURL(in: root, components: components)
+            else { continue }
+            targets.append((resolved, local))
+            if targets.count >= RemoteEditAssets.maxFiles { break }
+        }
+        guard !targets.isEmpty else { return }
+        let deadline = ContinuousClock.now + .seconds(15)
+        var total: UInt64 = 0
+        for target in targets {
+            guard !Task.isCancelled, ContinuousClock.now < deadline else { return }
+            // stat 跟随符号链接;跳过目录与过大的文件
+            guard let attributes = try? await sftp.getAttributes(at: target.remote),
+                  let size = attributes.size,
+                  size <= RemoteEditAssets.maxFileBytes,
+                  total + size <= RemoteEditAssets.maxTotalBytes,
+                  attributes.permissions.map({ $0 & 0o170000 != 0o040000 }) ?? true
+            else { continue }
+            do {
+                try FileManager.default.createDirectory(
+                    at: target.local.deletingLastPathComponent(), withIntermediateDirectories: true
+                )
+                total += try await SFTPDownloadEngine.downloadFile(
+                    remotePath: target.remote,
+                    expectedSize: size,
+                    localURL: target.local,
+                    sftp: sftp,
+                    budget: budget,
+                    configuration: configuration
+                )
+            } catch {
+                try? FileManager.default.removeItem(at: target.local)
+            }
+        }
     }
 
     /// 轮询本地文件 mtime,变化即回传(对 vim/VSCode 的原子保存-重命名也可靠)
@@ -1158,6 +1226,91 @@ final class SFTPBrowser {
             return String(localized: "文件或目录不存在")
         }
         return String(localized: "SFTP 操作失败:\(raw)")
+    }
+}
+
+/// 本地编辑时随主文件一起拉下来的引用资源(issue #34):从 md/html 里找相对路径引用,
+/// 解析成远端绝对路径;本地按远端绝对路径镜像存放,所以 `../` 也能对上。纯函数,便于单测。
+enum RemoteEditAssets {
+    static let scannableExtensions: Set<String> = ["md", "markdown", "mdx", "html", "htm"]
+    static let maxFiles = 32
+    static let maxFileBytes: UInt64 = 20 * 1024 * 1024
+    static let maxTotalBytes: UInt64 = 64 * 1024 * 1024
+    /// 只扫文档开头这么多字节,超大文件不整份读进内存
+    static let maxScanBytes = 2 * 1024 * 1024
+
+    static func isScannable(_ fileName: String) -> Bool {
+        scannableExtensions.contains((fileName as NSString).pathExtension.lowercased())
+    }
+
+    private static let patterns: [NSRegularExpression] = [
+        // Markdown 图片/链接:![alt](path "title")、[text](<path with spaces>)
+        try! NSRegularExpression(pattern: #"\]\(\s*<?([^)\s>]+)>?"#),
+        // Markdown 引用式定义:[id]: path
+        try! NSRegularExpression(pattern: #"(?m)^ {0,3}\[[^\]]+\]:\s*<?(\S+)>?"#),
+        // HTML:src="..." / href='...'
+        try! NSRegularExpression(pattern: #"(?i)\b(?:src|href)\s*=\s*["']([^"']+)["']"#),
+    ]
+
+    /// 提取相对引用:丢掉带 scheme 的 URL(http:/data:/mailto:…)、`//host`、绝对路径、纯锚点,
+    /// 去掉 ?query 与 #fragment,做百分号解码;按出现顺序去重
+    static func relativeReferences(in text: String) -> [String] {
+        let ns = text as NSString
+        var matches: [(Int, String)] = []
+        for pattern in patterns {
+            for match in pattern.matches(in: text, range: NSRange(location: 0, length: ns.length)) {
+                guard match.numberOfRanges > 1, match.range(at: 1).location != NSNotFound else { continue }
+                matches.append((match.range(at: 1).location, ns.substring(with: match.range(at: 1))))
+            }
+        }
+        var seen: Set<String> = []
+        var result: [String] = []
+        for (_, raw) in matches.sorted(by: { $0.0 < $1.0 }) {
+            guard let reference = normalize(raw), seen.insert(reference).inserted else { continue }
+            result.append(reference)
+        }
+        return result
+    }
+
+    private static func normalize(_ raw: String) -> String? {
+        var reference = raw.trimmingCharacters(in: .whitespaces)
+        if let hash = reference.firstIndex(of: "#") { reference = String(reference[..<hash]) }
+        if let query = reference.firstIndex(of: "?") { reference = String(reference[..<query]) }
+        reference = reference.removingPercentEncoding ?? reference
+        guard !reference.isEmpty, !reference.hasPrefix("/"), !reference.hasSuffix("/") else { return nil }
+        if let colon = reference.firstIndex(of: ":") {
+            let scheme = reference[..<colon]
+            if !scheme.isEmpty, scheme.allSatisfy({ $0.isLetter || $0.isNumber || "+.-".contains($0) }) {
+                return nil
+            }
+        }
+        return reference
+    }
+
+    /// 相对引用 → 远端绝对路径;`..` 越过根目录的丢弃
+    static func resolve(_ reference: String, relativeTo directory: String) -> String? {
+        var stack = directory.split(separator: "/").map(String.init)
+        for part in reference.split(separator: "/") {
+            switch part {
+            case ".": continue
+            case "..":
+                guard !stack.isEmpty else { return nil }
+                stack.removeLast()
+            default: stack.append(String(part))
+            }
+        }
+        guard !stack.isEmpty else { return nil }
+        return "/" + stack.joined(separator: "/")
+    }
+
+    /// 远端绝对路径 → 本地镜像用的分量,每段都过 LocalPathComponentValidator
+    static func components(of absolutePath: String) -> [String]? {
+        let components = absolutePath.split(separator: "/").map(String.init)
+        guard !components.isEmpty else { return nil }
+        for component in components {
+            guard (try? LocalPathComponentValidator.validateComponent(component)) != nil else { return nil }
+        }
+        return components
     }
 }
 
