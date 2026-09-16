@@ -616,8 +616,65 @@ enum M2AcceptanceTest {
 
         browser.stopEditing(browser.path == "/" ? "/berth_edit_src.txt" : "\(browser.path)/berth_edit_src.txt")
         await browser.delete(entry)
-        log(synced ? "SFTPEDIT_OK downloaded=\(downloaded) synced=\(synced)" : "SFTPEDIT_FAIL 回传未生效")
+
+        // issue #34:md 相对引用的资源随主文件镜像下载
+        let assets = await verifyReferencedAssets(browser: browser, session: session, log: log)
+
+        log(synced && assets ? "SFTPEDIT_OK downloaded=\(downloaded) synced=\(synced) assets=\(assets)" : "SFTPEDIT_FAIL synced=\(synced) assets=\(assets)")
         browser.close()
+    }
+
+    /// issue #34 验收:远端 berth_ed/docs/readme.md 引用 diagrams/a.svg、../shared/b.png、一个 https URL、
+    /// 一个绝对路径和一个不存在的文件。editRemotely 后:本地副本按远端绝对路径镜像;两个相对资源在
+    /// 对应位置且内容正确;URL/绝对路径/缺失的不下载。
+    private static func verifyReferencedAssets(
+        browser: SFTPBrowser,
+        session: TerminalSession,
+        log: (String) -> Void
+    ) async -> Bool {
+        let home = browser.homePath
+        let docs = "\(home)/berth_ed/docs"
+        let remoteMD = "\(docs)/readme.md"
+        let setup = """
+        mkdir -p ~/berth_ed/docs/diagrams ~/berth_ed/shared \
+        && printf 'svg-data' > ~/berth_ed/docs/diagrams/a.svg \
+        && printf 'png-data' > ~/berth_ed/shared/b.png \
+        && printf '# T\\n![A](diagrams/a.svg)\\n![B](../shared/b.png)\\n![X](https://example.com/x.png)\\n![Y](/etc/hostname)\\n[missing](diagrams/nope.svg)\\n' > ~/berth_ed/docs/readme.md \
+        && echo BERTH_ED_READY
+        """
+        guard let prepared = await session.runAICommand(setup), prepared.output.contains("BERTH_ED_READY") else {
+            log("SFTPEDIT_FAIL assets: 远端准备失败"); return false
+        }
+        defer { Task { _ = await session.runAICommand("rm -rf ~/berth_ed") } }
+        await browser.navigate(to: docs)
+        guard browser.state == .ready, let entry = browser.entries.first(where: { $0.name == "readme.md" }) else {
+            log("SFTPEDIT_FAIL assets: 未见 readme.md state=\(browser.state) path=\(browser.path)"); return false
+        }
+        guard let local = browser.editRemotely(entry, openInEditor: false) else {
+            log("SFTPEDIT_FAIL assets: editRemotely 返回空"); return false
+        }
+        var ready = false
+        for _ in 0..<60 {
+            try? await Task.sleep(for: .milliseconds(200))
+            if browser.editing[remoteMD] == .idle { ready = true; break }
+        }
+        let fm = FileManager.default
+        let mirrored = local.path.hasSuffix("/berth_ed/docs/readme.md")
+        let dir = local.deletingLastPathComponent()
+        let gotA = (try? String(contentsOf: dir.appendingPathComponent("diagrams/a.svg"), encoding: .utf8)) == "svg-data"
+        let gotB = (try? String(contentsOf: dir.appendingPathComponent("../shared/b.png").standardized, encoding: .utf8)) == "png-data"
+        // 镜像根 = 路径里 berth-edit-<uuid> 那一级;绝对路径引用不应被拉到根下
+        let rootIndex = local.pathComponents.firstIndex { $0.hasPrefix("berth-edit-") } ?? 0
+        let root = URL(fileURLWithPath: NSString.path(withComponents: Array(local.pathComponents[...rootIndex])))
+        let noAbsolute = !fm.fileExists(atPath: root.appendingPathComponent("etc/hostname").path)
+        let noMissing = !fm.fileExists(atPath: dir.appendingPathComponent("diagrams/nope.svg").path)
+        browser.stopEditing(remoteMD)
+        await browser.navigate(to: home)
+        let ok = ready && mirrored && gotA && gotB && noAbsolute && noMissing
+        if !ok {
+            log("SFTPEDIT_FAIL assets ready=\(ready) mirrored=\(mirrored) a=\(gotA) b=\(gotB) noAbs=\(noAbsolute) noMissing=\(noMissing) local=\(local.path)")
+        }
+        return ok
     }
 
     /// 拖放上传验收:BERTH_DROPUPLOAD_AUTOTEST=1。连目标(测试容器无命令集成,cwd 走
