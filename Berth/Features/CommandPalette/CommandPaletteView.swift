@@ -41,6 +41,11 @@ struct CommandPaletteView: View {
         let hasSession = m.selected != nil
         // 本地 Shell 会话没有 SFTP/服务器信息(纯 SSH 能力)
         let isLocalSession = m.selected?.spec.isLocal == true
+        // 远端增强动作要有已连上的 SSH 会话
+        let isConnectedSSH: Bool = {
+            guard let session = m.selected, !session.spec.isLocal, case .connected = session.state else { return false }
+            return true
+        }()
         var list: [PaletteCommand] = [
             PaletteCommand(id: "quickconnect", title: String(localized: "快速连接…"), subtitle: "⌘K", icon: "bolt.fill") {
                 QuickConnectController.shared.toggle()
@@ -77,6 +82,28 @@ struct CommandPaletteView: View {
             },
             PaletteCommand(id: "inspector", title: m.isInspectorVisible ? String(localized: "关闭服务器信息面板") : String(localized: "打开服务器信息面板"), subtitle: "⌘I", icon: "sidebar.right", isEnabled: hasSession && !isLocalSession) {
                 m.isInspectorVisible.toggle()
+            },
+            // issue #32:「增强」动作原本只藏在 ⌘I 面板底部,这里给个直达入口;
+            // 执行仍由检查器接手,结果显示在那里
+            PaletteCommand(
+                id: "shell-highlight",
+                title: String(localized: "启用命令高亮(zsh-syntax-highlighting)"),
+                subtitle: String(localized: "远端 ~/.zshrc 一键安装,输入命令时实时染色"),
+                icon: "paintbrush.pointed",
+                isEnabled: isConnectedSSH
+            ) {
+                m.selected?.pendingEnhancement = .shellHighlight
+                m.isInspectorVisible = true
+            },
+            PaletteCommand(
+                id: "command-integration",
+                title: String(localized: "启用命令集成(退出码可见)"),
+                subtitle: String(localized: "远端 rc 一键安装 OSC 133 钩子,退出码与命令边界可见"),
+                icon: "checkmark.seal",
+                isEnabled: isConnectedSSH
+            ) {
+                m.selected?.pendingEnhancement = .commandIntegration
+                m.isInspectorVisible = true
             },
             PaletteCommand(id: "find", title: String(localized: "在终端中查找"), subtitle: "⌘F", icon: "magnifyingglass", isEnabled: hasSession) {
                 m.requestSearch()

@@ -664,6 +664,11 @@ final class TerminalSession: Identifiable {
     enum ShellHighlightResult { case installed, alreadyEnabled, notZsh(String), failed(String) }
     enum CommandIntegrationResult { case installed, alreadyEnabled, failed(String) }
 
+    /// ⌘P 命令面板等外部入口请求检查器执行的增强动作(issue #32:入口藏得太深);
+    /// 检查器打开后接手执行并清空,结果照常显示在「增强」区
+    enum EnhancementRequest: Equatable { case shellHighlight, commandIntegration }
+    var pendingEnhancement: EnhancementRequest?
+
     /// 启用命令集成(OSC 133):给 bash 和 zsh 的 rc 各追加一段钩子,在每次执行命令前后
     /// 发出 OSC 133 A/B/C/D 标记,客户端据此感知命令边界与退出码。幂等,重连后生效。
     func enableCommandIntegration() async -> CommandIntegrationResult {
