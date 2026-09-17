@@ -22,6 +22,16 @@
       },
       "shouldTranslate": false
     },
+    "%@ 副本": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ copy"
+          }
+        }
+      }
+    },
     "%@ 文档与模型列表": {
       "localizations": {
         "en": {
@@ -1545,12 +1555,32 @@
         }
       }
     },
+    "上传到「%@」": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload into “%@”"
+          }
+        }
+      }
+    },
     "上传到哪个目录?": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
             "value": "Upload to which directory?"
+          }
+        }
+      }
+    },
+    "上传到此文件夹…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload Into This Folder…"
           }
         }
       }
@@ -1581,6 +1611,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Upload Files or Folders"
+          }
+        }
+      }
+    },
+    "上传文件或文件夹…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upload Files or Folders…"
           }
         }
       }
@@ -2812,6 +2852,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Create"
+          }
+        }
+      }
+    },
+    "创建副本…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Duplicate…"
           }
         }
       }
@@ -6653,6 +6703,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Leave empty to type it after connecting"
+          }
+        }
+      }
+    },
+    "留空沿用原主机的 passphrase": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave empty to reuse the original host's passphrase"
+          }
+        }
+      }
+    },
+    "留空沿用原主机的;没存过就连接后手动输入": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave empty to reuse the original host's; if none is saved you type it after connecting"
+          }
+        }
+      }
+    },
+    "留空沿用原主机的密码": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leave empty to reuse the original host's password"
           }
         }
       }

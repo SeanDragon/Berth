@@ -28,6 +28,8 @@ struct SidebarView: View {
 
     // 编辑/删除状态(删除只存快照,不持有模型 —— 模型可能被 config 同步等外部删除,悬空访问会崩溃)
     @State private var editingHost: Host?
+    /// 「创建副本」的来源(issue #36):保存时按它的 id 复制 Keychain 凭据,分组也沿用它的
+    @State private var duplicateOrigin: DuplicateOrigin?
     @State private var isCreatingHost = false
     @State private var hostPendingDeletion: PendingHost?
     @State private var configHostPendingDeletion: PendingHost?
@@ -35,6 +37,11 @@ struct SidebarView: View {
     private struct PendingHost: Identifiable {
         let id: UUID
         let label: String
+    }
+
+    private struct DuplicateOrigin {
+        let hostID: UUID
+        let groupID: UUID?
     }
 
     private var theme: TerminalTheme { ThemeStore.shared.current }
@@ -101,8 +108,12 @@ struct SidebarView: View {
         .sheet(isPresented: $isCreatingHost) {
             HostEditorView(host: nil, defaultGroupID: spacesActive ? selectedSpace?.id : nil)
         }
-        .sheet(item: $editingHost) { host in
-            HostEditorView(host: host, defaultGroupID: nil)
+        .sheet(item: $editingHost, onDismiss: { duplicateOrigin = nil }) { host in
+            HostEditorView(
+                host: host,
+                defaultGroupID: duplicateOrigin?.groupID,
+                secretsSourceHostID: duplicateOrigin?.hostID
+            )
         }
         .confirmationDialog(
             "删除主机「\(hostPendingDeletion?.label ?? "")」?",
@@ -365,6 +376,8 @@ struct SidebarView: View {
             }
         }
         Divider()
+        // issue #36:常见操作是拿一台已有主机改个地址再存一台
+        Button("创建副本…") { duplicate(host) }
         if host.source == .sshConfig {
             Button("转为托管主机…") { convertToManaged(host) }
             Button("从 config 删除…", role: .destructive) {
@@ -671,6 +684,33 @@ struct SidebarView: View {
             privateKeyPath: host.privateKeyPath,
             note: host.note
         )
+    }
+
+    /// 创建副本(issue #36):字段整套照抄、新 id、名字加「副本」,交给编辑器改地址,保存才入库。
+    /// group 关系不在这里挂(挂上就被 SwiftData 插进 context 了),通过 defaultGroupID 带给编辑器;
+    /// Keychain 里的凭据由编辑器保存时按源主机 id 复制。
+    private func duplicate(_ host: Host) {
+        let copy = Host(
+            label: String(localized: "\(host.label) 副本"),
+            hostname: host.hostname,
+            port: host.port,
+            username: host.username,
+            authMethod: host.authMethod,
+            privateKeyPath: host.privateKeyPath,
+            keyID: host.keyID,
+            tagColor: host.tagColor,
+            note: host.note,
+            sortOrder: host.sortOrder,
+            jumpHostID: host.jumpHostID,
+            proxy: host.proxy,
+            isProduction: host.isProduction,
+            startupCommands: host.startupCommands
+        )
+        copy.switchUser = host.switchUser
+        copy.aiInstructions = host.aiInstructions
+        copy.macAddress = host.macAddress
+        duplicateOrigin = DuplicateOrigin(hostID: host.id, groupID: spaceStore.effectiveSpaceID(of: host))
+        editingHost = copy
     }
 }
 
