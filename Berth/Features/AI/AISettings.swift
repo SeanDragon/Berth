@@ -64,6 +64,12 @@ enum AISettings {
         return raw > 0 ? raw : defaultMaxCommandRounds
     }
 
+    /// 全局自定义引导(空 = 不注入);按主机的引导在 HostSpec.aiInstructions
+    static var customInstructions: String {
+        UserDefaults.standard.string(forKey: SettingsKeys.aiCustomInstructions)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
     /// 本地推理(Ollama / LM Studio 等)不需要 Key
     static var isLocalEndpoint: Bool {
         let host = baseURL.host?.lowercased() ?? ""

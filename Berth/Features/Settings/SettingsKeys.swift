@@ -39,6 +39,8 @@ enum SettingsKeys {
     static let aiAPIFormat = "ai.apiFormat"
     /// AI 助手:单次对话命令轮数上限(0/未设 = 默认 30)
     static let aiMaxCommandRounds = "ai.maxCommandRounds"
+    /// AI 助手:全局自定义引导(注入系统提示词,对所有主机生效;按主机的在 Host.aiInstructions)
+    static let aiCustomInstructions = "ai.customInstructions"
     /// 本地 Shell 路径(空 = 登录 shell;macOS 本地终端会话用)
     static let localShellPath = "terminal.localShellPath"
     /// SFTP 双击编辑远端文件时用的本地编辑器 .app 路径(空 = 系统默认应用)

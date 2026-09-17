@@ -39,6 +39,7 @@ struct HostEditorView: View {
     @State private var startupCommands = ""
     @State private var switchUser = ""
     @State private var switchUserPassword = ""
+    @State private var aiInstructions = ""
     @State private var note = ""
     @State private var macAddress = ""
     @State private var validationMessage: String?
@@ -208,6 +209,18 @@ struct HostEditorView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
 
+                Section("AI 引导") {
+                    TextField(
+                        "主机引导",
+                        text: $aiInstructions,
+                        prompt: Text("这台机器的部署结构、服务名、注意事项,例如:\n应用跑在 docker compose,目录 /srv/app\n日志用 journalctl -u app 看;/data 不要动").foregroundStyle(.quaternary),
+                        axis: .vertical
+                    )
+                    .lineLimit(3...8)
+                    Text("注入 AI 助手的系统提示词,只对这台主机生效;设置的「AI 助手」里可另写全局引导。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+
                 if let message = validationMessage {
                     Text(message)
                         .font(.callout)
@@ -265,6 +278,7 @@ struct HostEditorView: View {
         isProduction = host.isProduction
         startupCommands = host.startupCommands
         switchUser = host.switchUser
+        aiInstructions = host.aiInstructions
         note = host.note
         macAddress = host.macAddress
     }
@@ -387,6 +401,7 @@ struct HostEditorView: View {
         target.isProduction = isProduction
         target.startupCommands = startupCommands
         target.switchUser = switchUser.trimmingCharacters(in: .whitespaces)
+        target.aiInstructions = aiInstructions
         target.note = note
         target.macAddress = macAddress.trimmingCharacters(in: .whitespaces)
 

@@ -45,6 +45,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKeys.aiAutoRunCommands) private var aiAutoRun = false
     @AppStorage(SettingsKeys.aiAPIFormat) private var aiFormat = AISettings.APIFormat.anthropic.rawValue
     @AppStorage(SettingsKeys.aiMaxCommandRounds) private var aiMaxRounds = AISettings.defaultMaxCommandRounds
+    @AppStorage(SettingsKeys.aiCustomInstructions) private var aiCustomInstructions = ""
     @AppStorage(SettingsKeys.autoCheckUpdates) private var autoCheckUpdates = true
     @AppStorage(SettingsKeys.localShellPath) private var localShellPath = ""
     @AppStorage(SettingsKeys.externalEditorPath) private var externalEditorPath = ""
@@ -322,6 +323,18 @@ struct SettingsView: View {
                 // 已存的模型不在该供应商的常见列表里 → 停在「自定义…」,别把用户填的值顶掉
                 let known = AIProvider.find(aiProviderID)?.models ?? []
                 aiModelIsCustom = !known.isEmpty && !known.contains(aiModel)
+            }
+            Section("自定义引导") {
+                TextField(
+                    "全局引导",
+                    text: $aiCustomInstructions,
+                    prompt: Text("对所有主机生效,例如:\n回复一律用中文\n改配置文件前先备份原文件").foregroundStyle(.quaternary),
+                    axis: .vertical
+                )
+                .lineLimit(3...8)
+                Text("注入每次 AI 对话的系统提示词,像 Codex 的 AGENTS.md。主机编辑器里可再写只对单台主机生效的引导,两者叠加。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
     }
 

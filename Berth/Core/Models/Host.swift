@@ -57,6 +57,8 @@ final class Host {
     /// 连接后 su 切换到的用户(issue #35:禁止直登、只能 su 过去的账号);空 = 不切换。
     /// su 密码只进 Keychain(KeychainStore.switchUserPasswordAccount)
     var switchUser: String = ""
+    /// AI 助手的按主机引导:这台机器的部署结构/服务名/禁区,注入 AI 对话的系统提示词
+    var aiInstructions: String = ""
     /// 连接后探测到的系统名(/etc/os-release PRETTY_NAME),驱动侧栏系统徽章;空 = 未探测
     var osName: String = ""
     /// MAC 地址(用于 Wake-on-LAN,局域网唤醒);空 = 未设置

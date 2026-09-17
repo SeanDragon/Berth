@@ -388,6 +388,15 @@ final class AIChatController {
                 lines.append("The user's terminal working directory is unknown (shell integration is not enabled on this host and no shell process could be probed). run_command starts in the login directory. If the user refers to their current directory, ask them for the path, and mention that enabling Berth's command integration (one-click install in the server info panel, ⌘I) lets you know it automatically.")
             }
         }
+        // 用户自定义引导(Codex AGENTS.md 式):全局实时读设置,按主机取自连接时的快照
+        let globalGuide = AISettings.customInstructions
+        if !globalGuide.isEmpty {
+            lines.append("User-provided guidance (applies to all hosts):\n\(globalGuide)")
+        }
+        let hostGuide = spec.aiInstructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !hostGuide.isEmpty {
+            lines.append("User-provided guidance for this host:\n\(hostGuide)")
+        }
         return lines.joined(separator: "\n")
     }
 

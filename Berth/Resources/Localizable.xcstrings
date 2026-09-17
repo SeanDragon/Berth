@@ -492,6 +492,16 @@
         }
       }
     },
+    "AI 引导": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI Guidance"
+          }
+        }
+      }
+    },
     "AI 服务返回错误": {
       "localizations": {
         "en": {
@@ -1875,6 +1885,16 @@
         }
       }
     },
+    "主机引导": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Host Guidance"
+          }
+        }
+      }
+    },
     "主题": {
       "localizations": {
         "en": {
@@ -2461,6 +2481,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Select None"
+          }
+        }
+      }
+    },
+    "全局引导": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Global Guidance"
           }
         }
       }
@@ -3962,6 +3992,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Key type"
+          }
+        }
+      }
+    },
+    "对所有主机生效,例如:\n回复一律用中文\n改配置文件前先备份原文件": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies to every host, e.g.:\nAlways reply in Chinese\nBack up config files before editing them"
           }
         }
       }
@@ -6327,6 +6367,26 @@
         }
       }
     },
+    "注入 AI 助手的系统提示词,只对这台主机生效;设置的「AI 助手」里可另写全局引导。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Injected into the AI assistant's system prompt for this host only; global guidance can be set in the AI Assistant settings."
+          }
+        }
+      }
+    },
+    "注入每次 AI 对话的系统提示词,像 Codex 的 AGENTS.md。主机编辑器里可再写只对单台主机生效的引导,两者叠加。": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Injected into the system prompt of every AI conversation, like Codex's AGENTS.md. The host editor can add per-host guidance on top of this."
+          }
+        }
+      }
+    },
     "活跃会话": {
       "localizations": {
         "en": {
@@ -7397,6 +7457,16 @@
         }
       }
     },
+    "自定义引导": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom Guidance"
+          }
+        }
+      }
+    },
     "蓝": {
       "localizations": {
         "en": {
@@ -8183,6 +8253,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "This host uses key authentication. With “Require Touch ID before using keys” on, background polling needs your approval once."
+          }
+        }
+      }
+    },
+    "这台机器的部署结构、服务名、注意事项,例如:\n应用跑在 docker compose,目录 /srv/app\n日志用 journalctl -u app 看;/data 不要动": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This machine's layout, services, and rules, e.g.:\nApp runs via docker compose in /srv/app\nCheck logs with journalctl -u app; never touch /data"
           }
         }
       }

@@ -61,6 +61,8 @@ struct HostSpec: Equatable, Sendable {
     var startupCommands: String = ""
     /// 连接后 su 切换到的用户;空 = 不切换(issue #35)
     var switchUser: String = ""
+    /// AI 助手的按主机引导(注入系统提示词;空 = 无)
+    var aiInstructions: String = ""
     /// 本地 Shell 会话(不走 SSH,直接 fork 本机 shell)。macOS 专用;iOS 不提供入口。
     var isLocal: Bool = false
 
@@ -110,6 +112,7 @@ struct HostSpec: Equatable, Sendable {
         self.tagColorRaw = host.tagColorRaw
         self.startupCommands = host.startupCommands
         self.switchUser = host.switchUser
+        self.aiInstructions = host.aiInstructions
         self.jump = []
         self.forwards = (host.portForwards ?? [])
             .filter(\.enabled)
