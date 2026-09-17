@@ -142,4 +142,15 @@ enum KeychainStore {
         try? delete(account: proxyPasswordAccount(for: hostID))
         try? delete(account: switchUserPasswordAccount(for: hostID))
     }
+
+    /// 把一台主机的全部凭据复制给另一台(创建副本用,issue #36);源主机没存的项不动
+    static func copySecrets(from sourceID: UUID, to targetID: UUID) {
+        let accounts: [(UUID) -> String] = [
+            passwordAccount, passphraseAccount, proxyPasswordAccount, switchUserPasswordAccount,
+        ]
+        for account in accounts {
+            guard let secret = try? read(account: account(sourceID)), !secret.isEmpty else { continue }
+            try? save(secret, account: account(targetID))
+        }
+    }
 }

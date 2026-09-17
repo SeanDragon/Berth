@@ -11,6 +11,9 @@ struct HostEditorView: View {
     var onConnect: ((Host) -> Void)? = nil
     /// 普通「保存」后的动作(issue #11:断线卡片进来的编辑,保存也要立即对失败会话生效)
     var onSave: ((Host) -> Void)? = nil
+    /// 创建副本(issue #36):保存时把这台源主机 Keychain 里的密码/passphrase/代理密码/su 密码
+    /// 复制到新主机 id 下,表单里留空即沿用;nil = 普通新建/编辑
+    var secretsSourceHostID: UUID? = nil
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -46,6 +49,22 @@ struct HostEditorView: View {
     @State private var quickFill = ""
 
     private var isEditing: Bool { host != nil }
+    private var isDuplicating: Bool { secretsSourceHostID != nil }
+
+    private var passwordPrompt: LocalizedStringKey {
+        if isDuplicating { return "留空沿用原主机的密码" }
+        return isEditing ? "留空保持不变" : "密码"
+    }
+
+    private var passphrasePrompt: LocalizedStringKey {
+        if isDuplicating { return "留空沿用原主机的 passphrase" }
+        return isEditing ? "留空保持不变" : "没有则不填"
+    }
+
+    private var switchUserPasswordPrompt: LocalizedStringKey {
+        if isDuplicating { return "留空沿用原主机的;没存过就连接后手动输入" }
+        return isEditing ? "留空保持不变;没存过就连接后手动输入" : "留空则连接后手动输入"
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -83,7 +102,7 @@ struct HostEditorView: View {
                         SecureField(
                             "密码",
                             text: $password,
-                            prompt: Text(isEditing ? "留空保持不变" : "密码").foregroundStyle(.quaternary)
+                            prompt: Text(passwordPrompt).foregroundStyle(.quaternary)
                         )
                     case .privateKeyFile:
                         HStack {
@@ -93,7 +112,7 @@ struct HostEditorView: View {
                         SecureField(
                             "Passphrase",
                             text: $passphrase,
-                            prompt: Text(isEditing ? "留空保持不变" : "没有则不填").foregroundStyle(.quaternary)
+                            prompt: Text(passphrasePrompt).foregroundStyle(.quaternary)
                         )
                     case .storedKey:
                         if storedKeys.isEmpty {
@@ -189,7 +208,7 @@ struct HostEditorView: View {
                         SecureField(
                             "su 密码",
                             text: $switchUserPassword,
-                            prompt: Text(isEditing ? "留空保持不变;没存过就连接后手动输入" : "留空则连接后手动输入").foregroundStyle(.quaternary)
+                            prompt: Text(switchUserPasswordPrompt).foregroundStyle(.quaternary)
                         )
                     }
                     Text("适合禁止直接登录、只能 su 过去的账号:连上后自动执行 su - 用户,等到密码提示再从钥匙串填入,不会盲发;分屏新开的 shell 也会切换。密码只进钥匙串。")
@@ -234,7 +253,7 @@ struct HostEditorView: View {
                 Button("取消") { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(isEditing ? "保存" : "创建") { save() }
+                Button(isEditing && !isDuplicating ? "保存" : "创建") { save() }
                 Button("保存并连接") { save(andConnect: true) }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
@@ -268,7 +287,8 @@ struct HostEditorView: View {
         authMethod = host.authMethod
         privateKeyPath = host.privateKeyPath ?? ""
         selectedKeyID = host.keyID
-        groupID = host.group?.id
+        // 未入库的副本不挂 group 关系(挂了会被 SwiftData 顺手插进 context),分组走 defaultGroupID
+        groupID = host.group?.id ?? defaultGroupID
         jumpHostID = host.jumpHostID
         proxyKind = host.proxy.kind
         proxyHost = host.proxy.host
@@ -405,6 +425,10 @@ struct HostEditorView: View {
         target.note = note
         target.macAddress = macAddress.trimmingCharacters(in: .whitespaces)
 
+        // 创建副本:先把源主机的凭据整套复制到新 id 下,下面用户填了的覆盖、用不上的删掉,留空即沿用
+        if let sourceID = secretsSourceHostID {
+            KeychainStore.copySecrets(from: sourceID, to: target.id)
+        }
         do {
             if target.switchUser.isEmpty {
                 try? KeychainStore.delete(account: KeychainStore.switchUserPasswordAccount(for: target.id))

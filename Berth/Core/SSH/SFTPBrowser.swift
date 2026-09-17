@@ -797,9 +797,11 @@ final class SFTPBrowser {
     }
 
     /// 上传文件或整个目录(issue #17):目录先扫描再递归,文件流式分块不整读进内存
-    func upload(from localURL: URL) async {
+    /// - Parameter directory: 远端目标目录;nil = 当前目录(右键目录行「上传到此文件夹」传子目录,issue #36)
+    func upload(from localURL: URL, into directory: String? = nil) async {
         guard let sftp else { return }
         let name = localURL.lastPathComponent
+        let remoteDirectory = directory ?? path
         var isDir: ObjCBool = false
         FileManager.default.fileExists(atPath: localURL.path, isDirectory: &isDir)
         let transferID = beginTransfer(isDir.boolValue
@@ -810,7 +812,7 @@ final class SFTPBrowser {
             if isDir.boolValue {
                 try await Self.performDirectoryUpload(
                     localRoot: localURL,
-                    remoteRoot: join(path, name),
+                    remoteRoot: join(remoteDirectory, name),
                     sftp: sftp,
                     onPlan: { plan in
                         setTransfer(transferID, label: plan.skippedSymlinks > 0
@@ -827,7 +829,7 @@ final class SFTPBrowser {
             } else {
                 let size = (try? FileManager.default.attributesOfItem(atPath: localURL.path)[.size] as? UInt64) ?? 0
                 setTransfer(transferID, progress: size > 0 ? 0 : nil)
-                try await Self.uploadLocalFile(localURL, to: join(path, name), sftp: sftp) { copied in
+                try await Self.uploadLocalFile(localURL, to: join(remoteDirectory, name), sftp: sftp) { copied in
                     if size > 0 {
                         setTransfer(transferID, progress: min(1, Double(copied) / Double(size)))
                     }

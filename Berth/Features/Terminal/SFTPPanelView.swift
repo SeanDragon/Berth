@@ -225,12 +225,24 @@ struct SFTPPanelView: View {
                 .padding()
             }
         case .ready:
+            // 空白处右键 = 工具栏同一组动作(issue #36,对齐 WindTerm 习惯);文件行有自己更近的菜单
             if browser?.entries.isEmpty == true {
                 centered { Text("空目录").font(.caption).foregroundStyle(.secondary) }
+                    .contentShape(Rectangle())
+                    .contextMenu { directoryMenu }
             } else {
                 fileList
+                    .contextMenu { directoryMenu }
             }
         }
+    }
+
+    @ViewBuilder
+    private var directoryMenu: some View {
+        Button("上传文件或文件夹…") { uploadPick() }
+        Button("新建文件夹…") { creatingDir = true }
+        Divider()
+        Button("刷新") { Task { await browser?.refresh() } }
     }
 
     private var fileList: some View {
@@ -334,6 +346,7 @@ struct SFTPPanelView: View {
             }
             if entry.isDirectory {
                 Button("打开") { Task { await browser?.enter(entry) } }
+                Button("上传到此文件夹…") { uploadPick(into: entry) }
             } else {
                 Button("预览") { previewEntry = entry; Task { previewText = await browser?.previewText(entry) ?? String(localized: "(无法预览:二进制或过大)") } }
                 Button("用本地编辑器打开") { browser?.editRemotely(entry) }
@@ -495,14 +508,18 @@ struct SFTPPanelView: View {
         }
     }
 
-    private func uploadPick() {
+    /// 上传:不带目标 = 传到当前目录;带目录项 = 传进那个子目录(issue #36)
+    private func uploadPick(into directory: SFTPBrowser.Entry? = nil) {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = true    // issue #17:支持整个文件夹上传
-        if panel.runModal() == .OK {
-            for url in panel.urls {
-                Task { await browser?.upload(from: url) }
-            }
+        if let directory {
+            panel.message = String(localized: "上传到「\(directory.name)」")
+        }
+        guard panel.runModal() == .OK else { return }
+        let target = directory.map { browserRemotePath($0) }
+        for url in panel.urls {
+            Task { await browser?.upload(from: url, into: target) }
         }
     }
 
