@@ -416,7 +416,7 @@ enum M2AcceptanceTest {
         guard browser.state == .ready else { log("SFTP_NAV_FAIL 初始列表: \(browser.state)"); browser.close(); return }
 
         // 导航目标子目录
-        session.sendText("mkdir -p ~/berth_nav/sub\n")
+        session.sendText("mkdir -p ~/berth_nav\n")
         try? await Task.sleep(for: .milliseconds(800))
         await browser.refresh()
         guard let navDir = browser.entries.first(where: { $0.name == "berth_nav" && $0.isDirectory }) else {
@@ -460,7 +460,7 @@ enum M2AcceptanceTest {
         let navElapsed = Date().timeIntervalSince(navStart)
 
         // 导航必须真的经历过"看门狗判死 → 推迟":STOP 未生效的话这里会秒回,直接失败暴露
-        guard navElapsed >= 4.5, browser.path.hasSuffix("berth_nav/sub"), browser.state == .ready else {
+        guard navElapsed >= 4.5, browser.path.hasSuffix("/berth_nav"), browser.state == .ready else {
             log("SFTP_NAV_FAIL 导航结果异常 elapsed=\(String(format: "%.1f", navElapsed)) path=\(browser.path) state=\(browser.state)")
             await uploadTask.value
             browser.close()
