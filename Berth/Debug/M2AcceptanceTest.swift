@@ -379,6 +379,113 @@ enum M2AcceptanceTest {
         browser.close()
     }
 
+    /// BERTH_SFTP_NAV_AUTOTEST=1:上传进行中切换目录,列表看门狗不得杀掉在途传输。
+    /// 手法:SIGSTOP 冻结服务端 sftp 进程 → 发起上传(卡在 open 请求上,传输行在途)→
+    /// 切换目录(列目录挂住 → 看门狗探活也挂住 → 有传输在途 → 推迟判死)→ 定时 SIGCONT →
+    /// 导航应完成、上传应续跑至完整字节。修复前:探活超时即 dropClient,上传随共享通道一起
+    /// 静默死亡(表现就是"仅上传进度行消失、面板浏览随即自动恢复")。
+    static func runSFTPNavIfRequested(container: ModelContainer) async {
+        let env = ProcessInfo.processInfo.environment
+        guard env["BERTH_SFTP_NAV_AUTOTEST"] == "1",
+              let host = env["BERTH_TEST_HOST"],
+              let user = env["BERTH_TEST_USER"],
+              let keyFile = env["BERTH_TEST_KEYFILE"],
+              let dumpBase = env["BERTH_TEST_DUMP"] else { return }
+        func log(_ line: String) {
+            try? line.write(toFile: dumpBase + ".sftpnav.log", atomically: true, encoding: .utf8)
+        }
+        let port = Int(env["BERTH_TEST_PORT"] ?? "22") ?? 22
+        UserDefaults.standard.set(false, forKey: SettingsKeys.requireTouchIDForKeys)
+        let spec = HostSpec(
+            hostID: UUID(), label: "sftp-nav-test", hostname: host, port: port,
+            username: user, authMethod: .privateKeyFile, privateKeyPath: keyFile
+        )
+        let session = SessionManager.shared.open(spec: spec)
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline {
+            if session.hostKeyPrompt != nil { session.resolveHostKeyPrompt(accepted: true) }
+            if case .connected = session.state { break }
+            if case .disconnected(let reason) = session.state { log("SFTP_NAV_FAIL 连接失败 \(reason)"); return }
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        guard case .connected = session.state else { log("SFTP_NAV_FAIL 连接超时"); return }
+        defer { session.disconnect() }
+
+        let browser = SFTPBrowser { try await session.openSFTP() }
+        await browser.start()
+        guard browser.state == .ready else { log("SFTP_NAV_FAIL 初始列表: \(browser.state)"); browser.close(); return }
+
+        // 导航目标子目录
+        session.sendText("mkdir -p ~/berth_nav\n")
+        try? await Task.sleep(for: .milliseconds(800))
+        await browser.refresh()
+        guard let navDir = browser.entries.first(where: { $0.name == "berth_nav" && $0.isDirectory }) else {
+            log("SFTP_NAV_FAIL 未建出 ~/berth_nav"); browser.close(); return
+        }
+
+        // 本地 512MB 文件(分块写,不整块占内存)
+        let bigURL = URL(fileURLWithPath: NSTemporaryDirectory() + "berth_nav_up.bin")
+        FileManager.default.createFile(atPath: bigURL.path, contents: nil)
+        if let handle = try? FileHandle(forWritingTo: bigURL) {
+            let chunk = Data(repeating: 0xA5, count: 1 << 20)
+            for _ in 0..<512 { try? handle.write(contentsOf: chunk) }
+            try? handle.close()
+        }
+        defer { try? FileManager.default.removeItem(at: bigURL) }
+        let bigSize = (try? FileManager.default.attributesOfItem(atPath: bigURL.path)[.size] as? UInt64) ?? 0
+        guard bigSize == 512 * 1024 * 1024 else { log("SFTP_NAV_FAIL 本地大文件创建失败"); browser.close(); return }
+
+        // 缩短看门狗:4s 列表 + 1s 探活 → STOP 后 ~6s 出第一次判死决策
+        browser.listingTimeout = .seconds(4)
+        browser.probeTimeout = .seconds(1)
+
+        // 先 fork 定时 SIGCONT 的子壳(主壳可能随 internal-sftp 一起被冻结,必须提前铺好),
+        // 再 STOP。方括号写法避免 pkill -f 匹配到这条命令自身。时序:STOP≈0s → 导航≈1.3s →
+        // 判死决策≈6.3s → 推迟窗口 6.3-10.3s → CONT≈7.1s 落在窗口内
+        session.sendText("( sleep 7; pkill -CONT -f \"sftp[-]server\"; pkill -CONT -f \"internal[-]sftp\" ) >/dev/null 2>&1 & pkill -STOP -f \"sftp[-]server\"; pkill -STOP -f \"internal[-]sftp\"\n")
+        try? await Task.sleep(for: .milliseconds(800))
+
+        // 上传先发起(卡在 open 请求上 → 传输行保持在途),再切目录触发看门狗
+        let uploadTask = Task { await browser.upload(from: bigURL) }
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !browser.transfers.isEmpty else {
+            log("SFTP_NAV_FAIL 上传任务未进入在途状态")
+            await uploadTask.value
+            browser.close()
+            return
+        }
+        let navStart = Date()
+        let navTask = Task { await browser.enter(navDir) }
+        await navTask.value
+        let navElapsed = Date().timeIntervalSince(navStart)
+
+        // 导航必须真的经历过"看门狗判死 → 推迟":STOP 未生效的话这里会秒回,直接失败暴露
+        guard navElapsed >= 4.5, browser.path.hasSuffix("/berth_nav"), browser.state == .ready else {
+            log("SFTP_NAV_FAIL 导航结果异常 elapsed=\(String(format: "%.1f", navElapsed)) path=\(browser.path) state=\(browser.state)")
+            await uploadTask.value
+            browser.close()
+            return
+        }
+
+        await uploadTask.value
+        await browser.navigate(to: browser.homePath)
+        await browser.refresh()
+        let uploadedEntry = browser.entries.first { $0.name == bigURL.lastPathComponent }
+        let uploadedIntact = uploadedEntry?.size == bigSize
+        let idle = browser.transfers.isEmpty
+
+        if let uploadedEntry { await browser.delete(uploadedEntry) }
+        session.sendText("rm -rf ~/berth_nav\n")
+        try? await Task.sleep(for: .milliseconds(400))
+        browser.close()
+
+        if uploadedIntact, idle {
+            log("SFTP_NAV_OK navElapsed=\(String(format: "%.1f", navElapsed)) size=\(bigSize)")
+        } else {
+            log("SFTP_NAV_FAIL 上传未完整跑完 intact=\(uploadedIntact) idle=\(idle) state=\(browser.state)")
+        }
+    }
+
     /// issue #33 验收:面板持有的子通道死掉/挂住后必须自愈,不能停在死通道上等用户重启 app。
     /// (1) 服务端 sftp 进程被杀 → 通道关闭 → 刷新自动重开并回到原目录;
     /// (2) 服务端 sftp 进程 SIGSTOP(模拟远端目录挂在僵死的 NFS 上)→ 看门狗 20s 置失败并丢弃

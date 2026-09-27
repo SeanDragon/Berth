@@ -168,10 +168,16 @@ final class SFTPBrowser {
     /// 通道死掉后是否已经自动重开过一次(成功列目录即复位),服务端每次都秒断时不至于无限循环
     private var reopenedAfterFailure = false
     /// 列目录看门狗:远端目录挂在僵死的 NFS 上时 READDIR 永远不回,不能让面板一直转圈。
-    /// 到点不直接判死——大目录在高延迟链路上要几百次 READDIR 往返——而是先在同一通道上 stat 探活
-    static let listingTimeout: Duration = .seconds(20)
+    /// 到点不直接判死——大目录在高延迟链路上要几百次 READDIR 往返——而是先在同一通道上 stat 探活。
+    /// 实例属性便于验收测试注入更短的超时
+    var listingTimeout: Duration = .seconds(20)
     /// 探活 stat 的等待上限;stat 也不回才算通道挂了
-    static let probeTimeout: Duration = .seconds(10)
+    var probeTimeout: Duration = .seconds(10)
+    /// 上传/下载与列目录共用一条 SFTP 子通道,看门狗关通道会把在途传输一起杀掉
+    /// (表现为上传进度行凭空消失、浏览随即自动恢复)。探活也无回应时,若有传输在途,
+    /// 先按此轮数推迟判死(每轮 = listingTimeout + probeTimeout)给传输让路;
+    /// 轮次用尽(通道真挂死且传输也卡住)才照旧关通道自愈
+    static let maxWatchdogDeferrals = 2
 
     init(
         initialPath: String? = nil,
@@ -289,19 +295,28 @@ final class SFTPBrowser {
         }
         state = .loading
         let listing = Task { try await sftp.listDirectory(atPath: newPath) }
-        var outcome = await Self.result(of: listing, within: Self.listingTimeout)
+        var outcome = await Self.result(of: listing, within: listingTimeout)
+        var watchdogDeferrals = 0
         while outcome == nil {
             // 超时不等于死了:先发一个 stat 探活(任何回应,包括出错,都说明通道活着,只是目录大/链路慢),
             // 有回应就继续等;stat 也不回才关掉通道让挂起的请求失败,下次刷新自动开一条新通道
             guard self.sftp === sftp else { return }
             let probe = Task { try await sftp.getAttributes(at: newPath) }
-            guard await Self.result(of: probe, within: Self.probeTimeout) != nil else {
+            guard await Self.result(of: probe, within: probeTimeout) != nil else {
                 guard self.sftp === sftp else { return }
+                // 有传输在途时先不关通道:上传/下载与列目录共用这条子通道,现在关会把传输一起杀掉
+                // (切换目录误杀上传的根因)。推迟一轮继续等列表结果;轮次用尽才判死,
+                // 保证通道真挂死且传输也卡住时仍能自愈,不引入新的永久卡死路径
+                if !transfers.isEmpty, watchdogDeferrals < Self.maxWatchdogDeferrals {
+                    watchdogDeferrals += 1
+                    outcome = await Self.result(of: listing, within: listingTimeout)
+                    continue
+                }
                 dropClient()
                 state = .failed(String(localized: "SFTP 无响应,点刷新重新打开。"))
                 return
             }
-            outcome = await Self.result(of: listing, within: Self.listingTimeout)
+            outcome = await Self.result(of: listing, within: listingTimeout)
         }
         // 等待期间通道可能已被换掉(断线重连/超时重开),迟到的结果不能覆盖新通道的状态
         guard self.sftp === sftp, let outcome else { return }
